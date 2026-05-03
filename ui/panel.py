@@ -142,7 +142,11 @@ class ClipboardItemWidget(QWidget):
             image = QImage()
             import os
             if full_item.get("is_path", False) or (os.path.exists(val) and val.endswith('.png')):
-                image.load(val)
+                try:
+                    with open(val, "rb") as f:
+                        image.loadFromData(f.read(), "PNG")
+                except Exception:
+                    pass
             else:
                 try:
                     data = base64.b64decode(val)
@@ -378,7 +382,11 @@ class Panel(QWidget):
             image = QImage()
             import os
             if item_data.get("is_path", False) or (os.path.exists(val) and val.endswith('.png')):
-                image.load(val)
+                try:
+                    with open(val, "rb") as f:
+                        image.loadFromData(f.read(), "PNG")
+                except Exception:
+                    pass
             else:
                 import base64
                 try:

@@ -91,10 +91,19 @@ class ClipboardManager(QObject):
         if mime_data.hasImage() and self.record_image:
             image = self._clipboard.image()
             if not image.isNull():
+                import hashlib
+                img_data = image.bits().tobytes()
+                img_hash = hashlib.md5(img_data).hexdigest()
+                if getattr(self, "last_image_hash", None) == img_hash:
+                    return
+                self.last_image_hash = img_hash
                 self.add_image_item(image)
         elif mime_data.hasText() and self.record_text:
             text = mime_data.text().strip()
             if text:
+                if getattr(self, "last_text", None) == text:
+                    return
+                self.last_text = text
                 self.add_text_item(text)
 
     def _make_text_item(self, text):

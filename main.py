@@ -183,6 +183,16 @@ class FloatingAssistant:
         self.clipboard_mgr.record_image = self.options.get('record_image', True)
         self.panel.set_content_tracking_states(self.clipboard_mgr.record_text, self.clipboard_mgr.record_image)
         self.clipboard_mgr.max_items = self.options.get("clipboard_max_items", 20)
+        self.clipboard_mgr.max_images = self.options.get("clipboard_max_images", 20)
+        
+        # Apply picture path
+        pic_path = self.options.get("picture_save_path", "")
+        if not pic_path:
+            import os
+            pic_path = os.path.join(get_base_dir(), "picture")
+            self.options["picture_save_path"] = pic_path
+        self.clipboard_mgr.picture_save_path = pic_path
+        
         self.clipboard_mgr.tracking_enabled = self.options.get("clipboard_tracking_enabled", True)
         self.panel.set_tracking_enabled(self.options.get("clipboard_tracking_enabled", True))
 
@@ -481,10 +491,8 @@ class FloatingAssistant:
             self.settings_dialog.activateWindow()
             return
             
-        self.hotkey_mgr.paused = True
         self.settings_dialog = SettingsDialog(self.options, self.hotkey_mgr)
         self.settings_dialog.settings_saved.connect(self.apply_settings)
-        self.settings_dialog.finished.connect(lambda result: setattr(self.hotkey_mgr, 'paused', False))
         self.settings_dialog.show()
         
     def apply_settings(self, new_options):
