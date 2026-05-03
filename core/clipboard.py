@@ -178,6 +178,18 @@ class ClipboardManager(QObject):
         self.history = [existing for existing in self.history if self._item_key(existing) != key]
         self.history.insert(0, item)
         self._trim_history()
+        
+        # Clean missing files before emitting to prevent showing blank entries
+        valid_history = []
+        for it in self.history:
+            if it.get("type") == "image":
+                val = it.get("value", "")
+                if it.get("is_path", False) or val.endswith('.png'):
+                    if not os.path.exists(val):
+                        continue
+            valid_history.append(it)
+        self.history = valid_history
+        
         self._save_history()
         self.history_changed.emit(self.history)
 
@@ -258,6 +270,8 @@ class ClipboardManager(QObject):
             if not image.isNull():
                 self._clipboard.setImage(image)
                 QTimer.singleShot(50, lambda: keyboard.send("ctrl+v"))
+            else:
+                self.remove_item(item)
         else:
             text = item.get("value", "") if isinstance(item, dict) else str(item)
             self._clipboard.setText(text)

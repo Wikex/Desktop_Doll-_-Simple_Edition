@@ -394,6 +394,11 @@ class Panel(QWidget):
                     image.loadFromData(data, "PNG")
                 except:
                     pass
+            
+            if image.isNull():
+                self.item_deleted.emit(item_data)
+                return
+                
             pixmap = QPixmap.fromImage(image)
             
             if not hasattr(self, '_pinned_images'):
