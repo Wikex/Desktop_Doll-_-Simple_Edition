@@ -577,16 +577,22 @@ class SettingsDialog(QDialog):
             self._auto_save_options()
 
     def _restore_general_defaults(self):
+        import os
+        from utils.path_helper import get_base_dir
+        
         self.chk_hide_ball.blockSignals(True)
         self.chk_hide_ball.setChecked(DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True))
         self.chk_hide_ball.blockSignals(False)
         
-        self.video_path_input.setText("")
-        self.pic_path_input.setText("")
+        default_video_path = os.path.join(get_base_dir(), "video")
+        default_pic_path = os.path.join(get_base_dir(), "picture")
+        
+        self.video_path_input.setText(default_video_path)
+        self.pic_path_input.setText(default_pic_path)
         
         self.current_options["hide_ball_when_screenshot"] = DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True)
-        self.current_options["video_save_path"] = ""
-        self.current_options["picture_save_path"] = ""
+        self.current_options["video_save_path"] = default_video_path
+        self.current_options["picture_save_path"] = default_pic_path
         self._auto_save_options()
 
     def _on_clipboard_changed(self):
