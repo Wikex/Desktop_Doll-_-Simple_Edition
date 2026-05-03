@@ -168,6 +168,13 @@ class ClipboardManager(QObject):
         key = self._item_key(item_to_remove)
         for item in list(self.history):
             if self._item_key(item) == key:
+                if item.get("type") == "image":
+                    val = item.get("value", "")
+                    if os.path.exists(val) and val.endswith(".png"):
+                        try:
+                            os.remove(val)
+                        except Exception:
+                            pass
                 self.history.remove(item)
                 break
                 
@@ -175,6 +182,14 @@ class ClipboardManager(QObject):
         self.history_changed.emit(self.history)
 
     def clear_history(self):
+        for item in self.history:
+            if item.get("type") == "image":
+                val = item.get("value", "")
+                if os.path.exists(val) and val.endswith(".png"):
+                    try:
+                        os.remove(val)
+                    except Exception:
+                        pass
         self.history.clear()
         self._save_history()
         self.history_changed.emit(self.history)
