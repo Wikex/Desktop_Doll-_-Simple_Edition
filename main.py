@@ -269,6 +269,8 @@ class FloatingAssistant:
         self.tray.menu.popup(QCursor.pos())
                 
     def on_clipboard_ball_clicked(self):
+        # Clean missing files before showing
+        self.clipboard_mgr.clean_missing_files()
         # Toggle clipboard panel near the sub-ball
         ball_pos = self.clipboard_ball.geometry()
         self.panel.toggle_visibility(ball_pos.x(), ball_pos.y())
@@ -602,6 +604,7 @@ class FloatingAssistant:
                 
     def on_action_triggered(self, action_name):
         if action_name == "clipboard":
+            self.clipboard_mgr.clean_missing_files()
             # Open panel relative to current cursor position
             from PySide6.QtGui import QCursor
             cursor_pos = QCursor.pos()

@@ -221,7 +221,25 @@ class ClipboardManager(QObject):
         self.history_changed.emit(self.history)
 
     def get_history(self):
+        self.clean_missing_files()
         return self.history
+
+    def clean_missing_files(self):
+        changed = False
+        valid_history = []
+        for item in self.history:
+            if item.get("type") == "image":
+                val = item.get("value", "")
+                if item.get("is_path", False) or val.endswith('.png'):
+                    if not os.path.exists(val):
+                        changed = True
+                        continue
+            valid_history.append(item)
+            
+        if changed:
+            self.history = valid_history
+            self._save_history()
+            self.history_changed.emit(self.history)
 
     def copy_to_clipboard(self, item):
         """Called when user clicks an item to copy it back"""
