@@ -27,6 +27,12 @@ class ClipboardManager(QObject):
         # Connect to clipboard data change signal
         self._clipboard.dataChanged.connect(self._on_clipboard_changed)
         
+        # Debounce timer for image clipboard changes
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(200)  # 200ms debounce
+        self._debounce_timer.timeout.connect(self._process_clipboard)
+        
         # Flag to prevent reading what we just wrote programmatically
         self.ignore_next = False
 
@@ -71,6 +77,11 @@ class ClipboardManager(QObject):
             self.ignore_next = False
             return
             
+        # Restart the debounce timer. If multiple changes arrive rapidly (like a screenshot),
+        # only the last one will trigger the processing.
+        self._debounce_timer.start()
+
+    def _process_clipboard(self):
         mime_data = self._clipboard.mimeData()
         if mime_data.hasUrls():
             # Windows Explorer file copy often exposes file URLs and may also
