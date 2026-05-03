@@ -120,7 +120,6 @@ class FloatingAssistant:
         self.video_save_path = self.options.get("video_save_path", "")
         if not self.video_save_path:
             import os
-            from utils.path_helper import get_base_dir
             self.video_save_path = os.path.join(get_base_dir(), "video")
             self.options["video_save_path"] = self.video_save_path
         
@@ -504,7 +503,6 @@ class FloatingAssistant:
         pic_path = self.options.get("picture_save_path", "")
         if not pic_path:
             import os
-            from utils.path_helper import get_base_dir
             pic_path = os.path.join(get_base_dir(), "picture")
             self.options["picture_save_path"] = pic_path
         self.clipboard_mgr.picture_save_path = pic_path
