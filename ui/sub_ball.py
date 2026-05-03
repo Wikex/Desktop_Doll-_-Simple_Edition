@@ -65,7 +65,10 @@ class SubBall(QWidget):
         painter.setFont(font)
         if hasattr(self, 'icon') and self.icon and not self.icon.isNull():
             pixmap = self.icon.pixmap(20, 20)
-            painter.drawPixmap((self.width() - 20) // 2, (self.height() - 20) // 2, pixmap)
+            if not pixmap.isNull():
+                painter.drawPixmap((self.width() - 20) // 2, (self.height() - 20) // 2, pixmap)
+            else:
+                painter.drawText(self.rect(), Qt.AlignCenter, self.text)
         else:
             painter.drawText(self.rect(), Qt.AlignCenter, self.text)
 
