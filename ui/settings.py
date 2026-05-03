@@ -7,6 +7,9 @@ from PySide6.QtGui import QKeyEvent, QIcon, QCloseEvent
 from utils.config import save_hotkeys, save_option, DEFAULT_OPTIONS, DEFAULT_HOTKEYS
 
 class HotkeyLineEdit(QLineEdit):
+    focus_in = Signal()
+    focus_out = Signal()
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
@@ -72,8 +75,19 @@ class HotkeyLineEdit(QLineEdit):
         if key_str:
             self.setText(hotkey_text)
 
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.focus_in.emit()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.focus_out.emit()
+
 class HotkeyRow(QWidget):
     text_changed = Signal(str, str)
+    focus_in = Signal()
+    focus_out = Signal()
+    
     def __init__(self, name, label_text, current_hotkey=""):
         super().__init__()
         self.name = name
@@ -91,6 +105,8 @@ class HotkeyRow(QWidget):
         self.input.setPlaceholderText("按下快捷键")
         self.input.setAlignment(Qt.AlignCenter)
         self.input.textChanged.connect(self._on_text_changed)
+        self.input.focus_in.connect(self.focus_in)
+        self.input.focus_out.connect(self.focus_out)
         
         self.btn_clear = QPushButton("×")
         self.btn_clear.setFixedSize(24, 24)
@@ -331,6 +347,8 @@ class SettingsDialog(QDialog):
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row, self.search_row, 
                     self.notebook_row, self.clipboard_row, self.toggle_ball_row]:
             row.text_changed.connect(self.on_hotkey_changed)
+            row.focus_in.connect(lambda: setattr(self.hotkey_mgr, 'paused', True))
+            row.focus_out.connect(lambda: setattr(self.hotkey_mgr, 'paused', False))
             hk_layout.addWidget(row)
             
         hk_layout.addStretch()
