@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+dist/
+build/
+*.spec
+history.json
+config.json
+notebook.json
+test_drag.py
+.vscode/
+.idea/
+test_*.py
+video/
+*.exe
