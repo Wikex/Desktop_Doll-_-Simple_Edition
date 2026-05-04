@@ -1,8 +1,9 @@
 import keyboard
 from PySide6.QtCore import QObject, Signal
+from PIL import ImageGrab
 
 class HotkeyManager(QObject):
-    action_triggered = Signal(str)
+    action_triggered = Signal(str, object)
 
     def __init__(self, hotkeys=None, parent=None):
         super().__init__(parent)
@@ -19,8 +20,17 @@ class HotkeyManager(QObject):
             
         try:
             # register with keyboard
-            # Use lambda with default arg to capture the current name correctly
-            cb = lambda n=name: self.action_triggered.emit(n) if not getattr(self, 'paused', False) else None
+            def cb(n=name):
+                if getattr(self, 'paused', False):
+                    return
+                payload = None
+                if n == "smart_screenshot":
+                    try:
+                        payload = ImageGrab.grab(all_screens=True)
+                    except Exception:
+                        pass
+                self.action_triggered.emit(n, payload)
+                
             keyboard.add_hotkey(key, cb)
             self._registered_hotkeys[name] = key
             self.hotkeys[name] = key

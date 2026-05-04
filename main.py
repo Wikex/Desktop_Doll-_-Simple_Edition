@@ -369,18 +369,18 @@ class FloatingAssistant:
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.warning(None, "\u5f55\u5c4f\u9519\u8bef", err) # 录屏错误
 
-    def on_smart_screenshot_clicked(self):
+    def on_smart_screenshot_clicked(self, background_image=None):
         if hasattr(self, 'screenshot_mask'):
             return 
 
-        background_image = None
         all_rects_global = None
         virtual_left = 0
         virtual_top = 0
         try:
             import win32api
             import win32con
-            background_image = ImageGrab.grab(all_screens=True)
+            if background_image is None:
+                background_image = ImageGrab.grab(all_screens=True)
             all_rects_global = get_all_visible_rects()
             virtual_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
             virtual_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
@@ -624,7 +624,7 @@ class FloatingAssistant:
                     sb.reset_position()
                     sb.show()
                 
-    def on_action_triggered(self, action_name):
+    def on_action_triggered(self, action_name, payload=None):
         if action_name == "clipboard":
             self.clipboard_mgr.clean_missing_files()
             # Open panel relative to current cursor position
@@ -634,7 +634,7 @@ class FloatingAssistant:
         elif action_name == "screenshot":
             self.on_screenshot_ball_clicked()
         elif action_name == "smart_screenshot":
-            self.on_smart_screenshot_clicked()
+            self.on_smart_screenshot_clicked(background_image=payload)
         elif action_name == "notebook":
             self.on_notebook_ball_clicked()
         elif action_name == "toggle_ball":
