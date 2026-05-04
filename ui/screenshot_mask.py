@@ -138,22 +138,56 @@ class ScreenshotMask(QWidget):
             # 绘制半透明黑色遮罩 (未选中部分变为灰色)
             painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
 
+        # 先把整屏压暗，保留“未选中区域是灰色”的效果
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+
         if self.smart_rect_global and not self.is_dragging:
             local_rect = self.smart_rect_global.translated(-offset)
-            # 使用 Source 模式强行覆盖，且保持 alpha=1 防止鼠标穿透到下层窗口
-            painter.setCompositionMode(QPainter.CompositionMode_Source)
-            painter.fillRect(local_rect, QColor(0, 0, 0, 1))
-            # 恢复正常绘制模式画边框
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            if self.background_image is not None:
+                try:
+                    left = int(local_rect.x())
+                    top = int(local_rect.y())
+                    right = left + int(local_rect.width())
+                    bottom = top + int(local_rect.height())
+                    cropped = self.background_image.crop((left, top, right, bottom))
+                    byte_io = io.BytesIO()
+                    cropped.save(byte_io, format='PNG')
+                    cutout = QPixmap()
+                    cutout.loadFromData(byte_io.getvalue())
+                    painter.drawPixmap(local_rect, cutout)
+                except Exception:
+                    painter.fillRect(local_rect, QColor(0, 0, 0, 1))
+            else:
+                # 使用 Source 模式强行覆盖，且保持 alpha=1 防止鼠标穿透到下层窗口
+                painter.setCompositionMode(QPainter.CompositionMode_Source)
+                painter.fillRect(local_rect, QColor(0, 0, 0, 1))
+                painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
             painter.setPen(QPen(QColor(255, 165, 0), 3))
             painter.drawRect(local_rect)
 
         if self.is_dragging and self.start_pos_global and self.current_pos_global:
             drag_rect_global = QRect(self.start_pos_global, self.current_pos_global).normalized()
             local_drag_rect = drag_rect_global.translated(-offset)
-            painter.setCompositionMode(QPainter.CompositionMode_Source)
-            painter.fillRect(local_drag_rect, QColor(0, 0, 0, 1))
-            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            if self.background_image is not None:
+                try:
+                    left = int(local_drag_rect.x())
+                    top = int(local_drag_rect.y())
+                    right = left + int(local_drag_rect.width())
+                    bottom = top + int(local_drag_rect.height())
+                    cropped = self.background_image.crop((left, top, right, bottom))
+                    byte_io = io.BytesIO()
+                    cropped.save(byte_io, format='PNG')
+                    cutout = QPixmap()
+                    cutout.loadFromData(byte_io.getvalue())
+                    painter.drawPixmap(local_drag_rect, cutout)
+                except Exception:
+                    painter.setCompositionMode(QPainter.CompositionMode_Source)
+                    painter.fillRect(local_drag_rect, QColor(0, 0, 0, 1))
+                    painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            else:
+                painter.setCompositionMode(QPainter.CompositionMode_Source)
+                painter.fillRect(local_drag_rect, QColor(0, 0, 0, 1))
+                painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
             painter.setPen(QPen(QColor(0, 120, 215), 2))
             painter.drawRect(local_drag_rect)
 
