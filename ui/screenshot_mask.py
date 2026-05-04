@@ -139,26 +139,33 @@ class ScreenshotMask(QWidget):
         else:
             painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
 
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
-
-        def draw_bright_rect(rect):
-            if hasattr(self, '_bg_pixmap') and self._bg_pixmap is not None:
-                painter.drawPixmap(rect, self._bg_pixmap, rect)
-            else:
-                painter.setCompositionMode(QPainter.CompositionMode_Source)
-                painter.fillRect(rect, QColor(0, 0, 0, 1))
-                painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+        local_rect = None
+        local_drag_rect = None
 
         if self.smart_rect_global and not self.is_dragging:
             local_rect = self.smart_rect_global.translated(-offset)
-            draw_bright_rect(local_rect)
-            painter.setPen(QPen(QColor(255, 165, 0), 3))
-            painter.drawRect(local_rect)
 
         if self.is_dragging and self.start_pos_global and self.current_pos_global:
             drag_rect_global = QRect(self.start_pos_global, self.current_pos_global).normalized()
             local_drag_rect = drag_rect_global.translated(-offset)
-            draw_bright_rect(local_drag_rect)
+
+        from PySide6.QtGui import QRegion
+        clip_region = QRegion(self.rect())
+        if local_rect:
+            clip_region = clip_region.subtracted(QRegion(local_rect))
+        if local_drag_rect:
+            clip_region = clip_region.subtracted(QRegion(local_drag_rect))
+
+        painter.setClipRegion(clip_region)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+        
+        painter.setClipping(False)
+
+        if local_rect:
+            painter.setPen(QPen(QColor(255, 165, 0), 3))
+            painter.drawRect(local_rect)
+
+        if local_drag_rect:
             painter.setPen(QPen(QColor(0, 120, 215), 2))
             painter.drawRect(local_drag_rect)
 
