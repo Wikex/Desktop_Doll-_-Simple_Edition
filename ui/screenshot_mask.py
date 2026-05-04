@@ -12,7 +12,7 @@ class ScreenshotMask(QWidget):
     finished = Signal()
     rect_selected = Signal(object)
 
-    def __init__(self, mode="screenshot"):
+    def __init__(self, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None):
         self.mode = mode
         super().__init__()
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
@@ -27,7 +27,10 @@ class ScreenshotMask(QWidget):
         self.is_dragging = False
         self.smart_rect_physical = None
         self.smart_rect_global = None
-        self.all_rects_global = get_all_visible_rects()
+        self.background_image = background_image
+        self.all_rects_global = all_rects_global if all_rects_global is not None else get_all_visible_rects()
+        self.virtual_screen_left = virtual_screen_left if virtual_screen_left is not None else win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+        self.virtual_screen_top = virtual_screen_top if virtual_screen_top is not None else win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
         self.total_geometry = self._get_total_geometry()
         self.setGeometry(self.total_geometry)
 
@@ -122,8 +125,18 @@ class ScreenshotMask(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         offset = self.total_geometry.topLeft()
 
-        # 绘制半透明黑色遮罩 (未选中部分变为灰色)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
+        if self.background_image is not None:
+            try:
+                byte_io = io.BytesIO()
+                self.background_image.save(byte_io, format='PNG')
+                pixmap = QPixmap()
+                pixmap.loadFromData(byte_io.getvalue())
+                painter.drawPixmap(self.rect(), pixmap)
+            except Exception:
+                painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
+        else:
+            # 绘制半透明黑色遮罩 (未选中部分变为灰色)
+            painter.fillRect(self.rect(), QColor(0, 0, 0, 100))
 
         if self.smart_rect_global and not self.is_dragging:
             local_rect = self.smart_rect_global.translated(-offset)
@@ -200,15 +213,18 @@ class ScreenshotMask(QWidget):
 
     def _do_capture(self, qrect_global):
         try:
-            v_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
-            v_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+            v_left = self.virtual_screen_left
+            v_top = self.virtual_screen_top
 
             left = qrect_global.x() - v_left
             top = qrect_global.y() - v_top
             right = left + qrect_global.width()
             bottom = top + qrect_global.height()
 
-            img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+            if self.background_image is not None:
+                img = self.background_image.crop((left, top, right, bottom))
+            else:
+                img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
 
             byte_io = io.BytesIO()
             img.save(byte_io, format='PNG')

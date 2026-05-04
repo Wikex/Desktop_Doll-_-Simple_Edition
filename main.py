@@ -2,6 +2,7 @@ import sys
 import os
 import ctypes
 from utils.path_helper import get_base_dir
+from PIL import ImageGrab
 
 # 设置 Windows DPI 感知 (需在创建 QApplication 之前调用)
 try: 
@@ -30,6 +31,7 @@ from ui.panel import Panel
 from system.tray import TrayIcon
 from core.clipboard import ClipboardManager
 from core.hotkey import HotkeyManager
+from core.screenshot import get_all_visible_rects
 from utils.config import load_hotkeys
 from ui.notebook import NotebookPanel
 from ui.screenshot_mask import ScreenshotMask
@@ -370,9 +372,29 @@ class FloatingAssistant:
     def on_smart_screenshot_clicked(self):
         if hasattr(self, 'screenshot_mask'):
             return 
-            
+
+        background_image = None
+        all_rects_global = None
+        virtual_left = 0
+        virtual_top = 0
+        try:
+            import win32api
+            import win32con
+            background_image = ImageGrab.grab(all_screens=True)
+            all_rects_global = get_all_visible_rects()
+            virtual_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+            virtual_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+        except Exception:
+            background_image = None
+            all_rects_global = None
+
         self._hide_balls_for_screenshot()
-        self.screenshot_mask = ScreenshotMask()
+        self.screenshot_mask = ScreenshotMask(
+            background_image=background_image,
+            all_rects_global=all_rects_global,
+            virtual_screen_left=virtual_left,
+            virtual_screen_top=virtual_top,
+        )
         self.screenshot_mask.finished.connect(self._on_screenshot_finished)
         self.screenshot_mask.show()
         
