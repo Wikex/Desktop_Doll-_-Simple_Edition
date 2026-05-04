@@ -1,9 +1,10 @@
 import keyboard
 from PySide6.QtCore import QObject, Signal
 from PIL import ImageGrab
+from core.screenshot import get_all_visible_rects
 
 class HotkeyManager(QObject):
-    action_triggered = Signal(str, object)
+    action_triggered = Signal(str, object, object)
 
     def __init__(self, hotkeys=None, parent=None):
         super().__init__(parent)
@@ -23,15 +24,17 @@ class HotkeyManager(QObject):
             def cb(n=name):
                 if getattr(self, 'paused', False):
                     return
-                payload = None
+                payload_img = None
+                payload_rects = None
                 if n == "smart_screenshot":
                     try:
-                        payload = ImageGrab.grab(all_screens=True)
+                        payload_img = ImageGrab.grab(all_screens=True)
+                        payload_rects = get_all_visible_rects()
                     except Exception:
                         pass
-                self.action_triggered.emit(n, payload)
+                self.action_triggered.emit(n, payload_img, payload_rects)
                 
-            keyboard.add_hotkey(key, cb)
+            keyboard.add_hotkey(key, cb, suppress=True)
             self._registered_hotkeys[name] = key
             self.hotkeys[name] = key
             return True
