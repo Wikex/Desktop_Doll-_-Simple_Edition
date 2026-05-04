@@ -79,7 +79,7 @@ class TrayIcon(QObject):
         # QSystemTrayIcon.Trigger \u901a\u5e38\u8868\u793a\u5de6\u952e\u5355\u51fb
         if reason == QSystemTrayIcon.Trigger:
             from PySide6.QtGui import QCursor
-            self.menu.popup(QCursor.pos())
+            self.menu.exec(QCursor.pos())
 
 
 

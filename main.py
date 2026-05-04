@@ -266,7 +266,7 @@ class FloatingAssistant:
 
     def show_ball_menu(self):
         from PySide6.QtGui import QCursor
-        self.tray.menu.popup(QCursor.pos())
+        self.tray.menu.exec(QCursor.pos())
                 
     def on_clipboard_ball_clicked(self):
         # Clean missing files before showing
