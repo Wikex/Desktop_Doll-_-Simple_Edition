@@ -370,41 +370,58 @@ class FloatingAssistant:
         QMessageBox.warning(None, "\u5f55\u5c4f\u9519\u8bef", err) # 录屏错误
 
     def on_smart_screenshot_clicked(self, background_image=None, pre_captured_rects=None):
-        if hasattr(self, 'screenshot_mask'):
+        if getattr(self, 'screenshot_mask', None) is not None:
             return 
+        if getattr(self, '_smart_screenshot_pending', False):
+            return
 
-        all_rects_global = None
-        virtual_left = 0
-        virtual_top = 0
-        try:
-            import win32api
-            import win32con
-            if background_image is None:
-                background_image = ImageGrab.grab(all_screens=True)
-            if pre_captured_rects is not None:
-                all_rects_global = pre_captured_rects
-            else:
-                all_rects_global = get_all_visible_rects()
-            virtual_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
-            virtual_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
-        except Exception:
-            background_image = None
+        self._smart_screenshot_pending = True
+
+        popup = QApplication.activePopupWidget()
+        if popup:
+            popup.close()
+
+        def start_mask():
+            if getattr(self, 'screenshot_mask', None) is not None:
+                self._smart_screenshot_pending = False
+                return
+
             all_rects_global = None
+            virtual_left = 0
+            virtual_top = 0
+            try:
+                import win32api
+                import win32con
+                nonlocal background_image
+                if background_image is None:
+                    background_image = ImageGrab.grab(all_screens=True)
+                if pre_captured_rects is not None:
+                    all_rects_global = pre_captured_rects
+                else:
+                    all_rects_global = get_all_visible_rects()
+                virtual_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+                virtual_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+            except Exception:
+                background_image = None
+                all_rects_global = None
 
-        self._hide_balls_for_screenshot()
-        self.screenshot_mask = ScreenshotMask(
-            background_image=background_image,
-            all_rects_global=all_rects_global,
-            virtual_screen_left=virtual_left,
-            virtual_screen_top=virtual_top,
-        )
-        self.screenshot_mask.finished.connect(self._on_screenshot_finished)
-        self.screenshot_mask.show()
+            self._hide_balls_for_screenshot()
+            self.screenshot_mask = ScreenshotMask(
+                background_image=background_image,
+                all_rects_global=all_rects_global,
+                virtual_screen_left=virtual_left,
+                virtual_screen_top=virtual_top,
+            )
+            self.screenshot_mask.finished.connect(self._on_screenshot_finished)
+            self.screenshot_mask.show()
+
+        QTimer.singleShot(0, start_mask)
         
     def _on_screenshot_finished(self):
+        self._smart_screenshot_pending = False
         self._restore_balls_after_screenshot()
         if hasattr(self, 'screenshot_mask'):
-            del self.screenshot_mask
+            self.screenshot_mask = None
 
     def _hide_balls_for_screenshot(self):
         if not self.options.get("hide_ball_when_screenshot", True):
