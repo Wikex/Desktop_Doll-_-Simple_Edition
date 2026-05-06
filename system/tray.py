@@ -10,6 +10,8 @@ class TrayIcon(QObject):
     toggle_hide_ball_when_screenshot_requested = Signal()
     change_clipboard_max_items_requested = Signal(int)
     toggle_clipboard_tracking_requested = Signal()
+    change_recent_max_items_requested = Signal(int)
+    toggle_recent_tracking_requested = Signal()
     change_clipboard_record_text_requested = Signal(bool)
     change_clipboard_record_image_requested = Signal(bool)
     change_browser_path_requested = Signal(str)
@@ -44,6 +46,18 @@ class TrayIcon(QObject):
         self.action_clipboard_limit = QAction("\u526a\u8d34\u677f历史容量...", self) # 剪贴板历史容量...
         self.action_clipboard_limit.triggered.connect(self._on_change_clipboard_limit)
         self.menu.addAction(self.action_clipboard_limit)
+        self.menu.addSeparator()
+
+        # 2.5 Recent Files
+        self.action_recent_tracking = QAction("监听最近使用变化", self)
+        self.action_recent_tracking.setCheckable(True)
+        self.action_recent_tracking.setChecked(True)
+        self.action_recent_tracking.triggered.connect(self._on_toggle_recent_tracking)
+        self.menu.addAction(self.action_recent_tracking)
+
+        self.action_recent_limit = QAction("最近使用最大条数...", self)
+        self.action_recent_limit.triggered.connect(self._on_change_recent_limit)
+        self.menu.addAction(self.action_recent_limit)
         self.menu.addSeparator()
 
         # 3. Screenshot / Record
@@ -104,6 +118,23 @@ class TrayIcon(QObject):
     def set_clipboard_tracking_enabled(self, checked):
         self.clipboard_tracking_enabled = checked
         self.action_clipboard_tracking.setChecked(checked)
+
+    def _on_change_recent_limit(self):
+        current = getattr(self, 'recent_max_items', 30)
+        value, ok = QInputDialog.getInt(None, "设置最近使用最大条数", "请输入最多保存条数：", current, 1, 999, 1)
+        if ok:
+            self.change_recent_max_items_requested.emit(value)
+
+    def _on_toggle_recent_tracking(self, checked):
+        self.recent_tracking_enabled = checked
+        self.toggle_recent_tracking_requested.emit()
+
+    def set_recent_max_items(self, value):
+        self.recent_max_items = value
+
+    def set_recent_tracking_enabled(self, checked):
+        self.recent_tracking_enabled = checked
+        self.action_recent_tracking.setChecked(checked)
 
     def show(self):
         self.tray.show()

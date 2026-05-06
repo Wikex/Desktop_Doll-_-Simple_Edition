@@ -11,7 +11,8 @@ DEFAULT_HOTKEYS = {
     "notebook": "ctrl+shift+n",
     "toggle_ball": "ctrl+shift+b",
     "record": "ctrl+shift+r",
-    "search": "ctrl+shift+f"
+    "search": "ctrl+shift+f",
+    "recent": ""
 }
 
 DEFAULT_OPTIONS = {
@@ -41,7 +42,7 @@ DEFAULT_OPTIONS = {
     "custom_apps": [],
     "recent_tracking_enabled": True,
     "recent_max_items": 30,
-    "recent_excluded_extensions": [],
+    "recent_excluded_extensions": {},
     "recent_extension_visibility": {}
 }
 

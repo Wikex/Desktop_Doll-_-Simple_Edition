@@ -167,6 +167,8 @@ class FloatingAssistant:
         self.tray.toggle_hide_ball_when_screenshot_requested.connect(self.toggle_hide_ball_when_screenshot)
         self.tray.change_clipboard_max_items_requested.connect(self.set_clipboard_max_items)
         self.tray.toggle_clipboard_tracking_requested.connect(self.toggle_clipboard_tracking)
+        self.tray.change_recent_max_items_requested.connect(self.set_recent_max_items)
+        self.tray.toggle_recent_tracking_requested.connect(self.toggle_recent_tracking)
         self.panel.toggle_text_tracking_clicked.connect(self.toggle_record_text)
         self.panel.toggle_image_tracking_clicked.connect(self.toggle_record_image)
         
@@ -522,7 +524,17 @@ class FloatingAssistant:
         self.clipboard_mgr.max_items = self.options["clipboard_max_items"]
         self.tray.set_clipboard_max_items(self.options["clipboard_max_items"])
         self.clipboard_mgr.history = self.clipboard_mgr.get_history()[: self.clipboard_mgr.max_items]
+        self.clipboard_mgr._save_history()
         self.clipboard_mgr.history_changed.emit(self.clipboard_mgr.history)
+
+    def set_recent_max_items(self, value):
+        self.options["recent_max_items"] = int(value)
+        save_option("recent_max_items", self.options["recent_max_items"])
+        self.recent_mgr.max_items = self.options["recent_max_items"]
+        self.tray.set_recent_max_items(self.options["recent_max_items"])
+        self.recent_mgr.history = self.recent_mgr.get_items()[: self.recent_mgr.max_items]
+        self.recent_mgr._save_history()
+        self.recent_mgr.items_changed.emit(self.recent_mgr.history)
 
     def set_video_save_path(self, path):
         self.video_save_path = path
@@ -739,6 +751,10 @@ class FloatingAssistant:
             self.on_record_ball_clicked()
         elif action_name == "search":
             self.on_search_ball_clicked()
+        elif action_name == "recent":
+            from PySide6.QtGui import QCursor
+            cursor_pos = QCursor.pos()
+            self.recent_panel.toggle_visibility(cursor_pos.x(), cursor_pos.y())
 
     
     def show_about(self):

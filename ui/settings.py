@@ -157,11 +157,12 @@ class HotkeyRow(QWidget):
 class SettingsDialog(QDialog):
     settings_saved = Signal(dict) # Emits updated options
 
-    def __init__(self, options, hotkey_mgr, clipboard_mgr=None, parent=None):
+    def __init__(self, options, hotkey_mgr, clipboard_mgr=None, recent_mgr=None, parent=None):
         super().__init__(parent)
         self.options = options
         self.hotkey_mgr = hotkey_mgr
         self.clipboard_mgr = clipboard_mgr
+        self.recent_mgr = recent_mgr
         self.setWindowTitle("桌面人偶设置")
         self.setFixedSize(580, 480)
         self.setStyleSheet("""
@@ -342,7 +343,47 @@ class SettingsDialog(QDialog):
         video_tab_layout.addLayout(create_restore_btn(self._restore_video_defaults))
         self.tabs.addTab(self.tab_video, "\u89c6\u9891\u8bbe\u7f6e") # 视频设置
         
-        # --- Tab 4: Hotkeys ---
+        # --- Tab 4: Recent Files ---
+        self.tab_recent = QWidget()
+        recent_layout = QVBoxLayout(self.tab_recent)
+        recent_layout.setSpacing(15)
+        
+        self.chk_recent_tracking = QCheckBox("监听最近使用变化")
+        self.chk_recent_tracking.setChecked(self.current_options.get("recent_tracking_enabled", True))
+        self.chk_recent_tracking.stateChanged.connect(self._on_recent_changed)
+        recent_layout.addWidget(self.chk_recent_tracking)
+        
+        recent_limit_layout = QHBoxLayout()
+        recent_limit_label = QLabel("最近使用最大条数:")
+        self.spin_recent_limit = QSpinBox()
+        self.spin_recent_limit.setRange(1, 999)
+        self.spin_recent_limit.setValue(self.current_options.get("recent_max_items", 30))
+        self.spin_recent_limit.editingFinished.connect(self._on_recent_limit_editing_finished)
+        self.spin_recent_limit.setStyleSheet("padding: 4px 8px; font-size: 14px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff;")
+        recent_limit_layout.addWidget(recent_limit_label)
+        recent_limit_layout.addWidget(self.spin_recent_limit)
+        recent_limit_layout.addStretch()
+        recent_layout.addLayout(recent_limit_layout)
+        
+        recent_btn_layout = QHBoxLayout()
+        btn_manage_excluded = QPushButton("管理禁止记录...")
+        btn_manage_excluded.setStyleSheet("padding: 6px 14px; background-color: #ef4444; color: white; border-radius: 6px; font-weight: bold;")
+        btn_manage_excluded.clicked.connect(self._open_recent_excluded_dialog)
+        
+        btn_clear_recent = QPushButton("清空最近使用...")
+        btn_clear_recent.setStyleSheet("padding: 6px 14px; background-color: #f59e0b; color: white; border-radius: 6px; font-weight: bold;")
+        btn_clear_recent.clicked.connect(self._on_clear_recent_clicked)
+        
+        recent_btn_layout.addWidget(btn_manage_excluded)
+        recent_btn_layout.addWidget(btn_clear_recent)
+        recent_btn_layout.addStretch()
+        recent_layout.addLayout(recent_btn_layout)
+        
+        recent_layout.addStretch()
+        recent_layout.addLayout(create_restore_btn(self._restore_recent_defaults))
+        self.tabs.addTab(self.tab_recent, "最近使用设置")
+        
+        # --- Tab 5: Hotkeys ---
         self.tab_hotkeys = QWidget()
         hk_layout = QVBoxLayout(self.tab_hotkeys)
         hk_layout.setSpacing(5)
@@ -353,10 +394,11 @@ class SettingsDialog(QDialog):
         self.search_row = HotkeyRow("search", "\u5feb\u6377\u641c\u7d22:", self.current_hotkeys.get("search", "")) # 快捷搜索:
         self.notebook_row = HotkeyRow("notebook", "\u663e\u793a/\u9690\u85cf\u8bb0\u4e8b\u672c:", self.current_hotkeys.get("notebook", "")) # 显示/隐藏记事本:
         self.clipboard_row = HotkeyRow("clipboard", "\u663e\u793a/\u9690\u85cf\u526a\u8d34\u677f:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
+        self.recent_row = HotkeyRow("recent", "显示/隐藏最近使用:", self.current_hotkeys.get("recent", ""))
         self.toggle_ball_row = HotkeyRow("toggle_ball", "\u663e\u793a/\u9690\u85cf\u60ac\u6d6e\u7403:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
         
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row, self.search_row, 
-                    self.notebook_row, self.clipboard_row, self.toggle_ball_row]:
+                    self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row]:
             row.text_changed.connect(self.on_hotkey_changed)
             row.focus_in.connect(lambda: setattr(self.hotkey_mgr, 'paused', True))
             row.focus_out.connect(lambda: setattr(self.hotkey_mgr, 'paused', False))
@@ -718,6 +760,65 @@ class SettingsDialog(QDialog):
         self.current_options["picture_save_path"] = default_pic_path
         self._auto_save_options()
 
+    def _on_recent_limit_editing_finished(self):
+        new_val = self.spin_recent_limit.value()
+        old_val = self.current_options.get("recent_max_items", 30)
+        
+        if new_val == old_val:
+            return
+            
+        if getattr(self, 'recent_mgr', None) is not None:
+            current_history_len = len(self.recent_mgr.get_items())
+            if new_val < current_history_len:
+                reply = QMessageBox.question(self, "确认修改", 
+                    "修改后的最大条数小于当前最近使用记录条数，是否修改？\n修改后将删除最早的内容。",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.No:
+                    self.spin_recent_limit.blockSignals(True)
+                    self.spin_recent_limit.setValue(old_val)
+                    self.spin_recent_limit.blockSignals(False)
+                    return
+                    
+        self.current_options["recent_max_items"] = new_val
+        self._auto_save_options()
+
+    def _on_recent_changed(self):
+        self.current_options["recent_tracking_enabled"] = self.chk_recent_tracking.isChecked()
+        self.current_options["recent_max_items"] = self.spin_recent_limit.value()
+        self._auto_save_options()
+
+    def _open_recent_excluded_dialog(self):
+        from ui.recent_dialogs import ExcludedExtensionsDialog
+        current_excluded = self.current_options.get("recent_excluded_extensions", {})
+        dialog = ExcludedExtensionsDialog(current_excluded, self)
+        if dialog.exec() == ExcludedExtensionsDialog.Accepted:
+            new_excluded = dialog.get_excluded_extensions()
+            self.current_options["recent_excluded_extensions"] = new_excluded
+            self._auto_save_options()
+            if getattr(self, 'recent_mgr', None):
+                self.recent_mgr.set_excluded_extensions(new_excluded)
+
+    def _restore_recent_defaults(self):
+        self.chk_recent_tracking.blockSignals(True)
+        self.spin_recent_limit.blockSignals(True)
+        
+        val_tracking = DEFAULT_OPTIONS.get("recent_tracking_enabled", True)
+        val_max = DEFAULT_OPTIONS.get("recent_max_items", 30)
+        val_excl = DEFAULT_OPTIONS.get("recent_excluded_extensions", {})
+        
+        self.chk_recent_tracking.setChecked(val_tracking)
+        self.spin_recent_limit.setValue(val_max)
+        
+        self.chk_recent_tracking.blockSignals(False)
+        self.spin_recent_limit.blockSignals(False)
+        
+        self.current_options["recent_tracking_enabled"] = val_tracking
+        self.current_options["recent_max_items"] = val_max
+        self.current_options["recent_excluded_extensions"] = val_excl
+        self._auto_save_options()
+        if getattr(self, 'recent_mgr', None):
+            self.recent_mgr.set_excluded_extensions(val_excl)
+
     def _on_feature_changed(self):
         for key, chk in self.feat_checkboxes.items():
             self.current_options[key] = chk.isChecked()
@@ -748,6 +849,7 @@ class SettingsDialog(QDialog):
                     "search": self.search_row,
                     "notebook": self.notebook_row,
                     "clipboard": self.clipboard_row,
+                    "recent": self.recent_row,
                     "toggle_ball": self.toggle_ball_row
                 }
                 row_map[name].set_hotkey(self.current_hotkeys.get(name, ""))
@@ -760,6 +862,7 @@ class SettingsDialog(QDialog):
             "search": self.search_row,
             "notebook": self.notebook_row,
             "clipboard": self.clipboard_row,
+            "recent": self.recent_row,
             "toggle_ball": self.toggle_ball_row
         }
         
