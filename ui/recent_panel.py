@@ -58,6 +58,7 @@ class RecentPanel(QWidget):
     toggle_tracking_clicked = Signal()
     excluded_extensions_changed = Signal(list)
     visibility_dict_changed = Signal(dict)
+    history_cleared = Signal()
 
     def __init__(self):
         super().__init__()
@@ -102,12 +103,6 @@ class RecentPanel(QWidget):
         
         title_layout = QHBoxLayout()
         
-        self.btn_toggle_tracking = QPushButton("记录")
-        self.btn_toggle_tracking.setFixedSize(40, 28)
-        self.btn_toggle_tracking.setCursor(Qt.PointingHandCursor)
-        self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #45a049; }")
-        self.btn_toggle_tracking.clicked.connect(self.toggle_tracking_clicked.emit)
-        
         self.btn_excluded = QPushButton("禁止记录")
         self.btn_excluded.setFixedSize(70, 28)
         self.btn_excluded.setCursor(Qt.PointingHandCursor)
@@ -122,7 +117,6 @@ class RecentPanel(QWidget):
         btn_close.setStyleSheet("QPushButton { background-color: transparent; border: none; color: #777; font-weight: bold; font-size: 18px; } QPushButton:hover { color: #ff0000; }")
         btn_close.clicked.connect(self.hide)
         
-        title_layout.addWidget(self.btn_toggle_tracking)
         title_layout.addWidget(self.btn_excluded)
         title_layout.addStretch()
         title_layout.addWidget(title)
@@ -142,8 +136,22 @@ class RecentPanel(QWidget):
         self.btn_filter.setStyleSheet("QPushButton { background-color: #3b82f6; color: white; border-radius: 5px; padding: 6px 12px; font-weight: bold; } QPushButton:hover { background-color: #2563eb; }")
         self.btn_filter.clicked.connect(self._on_filter_clicked)
         
+        self.btn_toggle_tracking = QPushButton("记录")
+        self.btn_toggle_tracking.setFixedSize(60, 28)
+        self.btn_toggle_tracking.setCursor(Qt.PointingHandCursor)
+        self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #45a049; }")
+        self.btn_toggle_tracking.clicked.connect(self.toggle_tracking_clicked.emit)
+        
+        self.btn_clear_all = QPushButton("清空")
+        self.btn_clear_all.setFixedSize(50, 28)
+        self.btn_clear_all.setCursor(Qt.PointingHandCursor)
+        self.btn_clear_all.setStyleSheet("QPushButton { background-color: #ff4c4c; color: white; border-radius: 5px; padding: 6px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #ff0000; }")
+        self.btn_clear_all.clicked.connect(self._on_clear_clicked)
+        
         bottom_layout.addWidget(self.btn_filter)
         bottom_layout.addStretch()
+        bottom_layout.addWidget(self.btn_toggle_tracking)
+        bottom_layout.addWidget(self.btn_clear_all)
         
         layout.addWidget(self.list_widget)
         layout.addLayout(bottom_layout)
@@ -178,6 +186,14 @@ class RecentPanel(QWidget):
             self._visibility_dict = new_dict
             self.visibility_dict_changed.emit(new_dict)
             self._apply_filter()
+
+    def _on_clear_clicked(self):
+        from PySide6.QtWidgets import QMessageBox
+        reply = QMessageBox.question(self, "确认清空", 
+            "确定要清空所有的最近使用记录吗？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.history_cleared.emit()
 
     def update_items(self, items):
         self._current_items = items

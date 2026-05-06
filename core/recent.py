@@ -147,6 +147,12 @@ class RecentManager(QObject):
             self._save_history()
             self.items_changed.emit(self.history)
 
+    def clear_history(self):
+        if self.history:
+            self.history.clear()
+            self._save_history()
+            self.items_changed.emit(self.history)
+
     def get_items(self):
         self.clean_missing_files()
         return self.history
