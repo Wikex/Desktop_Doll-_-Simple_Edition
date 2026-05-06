@@ -9,18 +9,29 @@ import base64
 
 
 class PinnedImageDialog(QWidget):
-    def __init__(self, pixmap, parent=None):
+    def __init__(self, pixmap, item_data=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("\u684c\u9762\u4eba\u5076") # 桌面人偶
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.original_pixmap = pixmap
+        self.item_data = item_data
         self.scale_factor = 1.0
         
         self._is_dragging = False
         self._drag_start_pos = None
 
         self.setFixedSize(pixmap.size())
+
+        screen = QApplication.primaryScreen()
+        if screen:
+            ratio = screen.devicePixelRatio()
+            if ratio and ratio > 1.0:
+                self.scale_factor = 1.0 / ratio
+                self.setFixedSize(
+                    max(1, int(pixmap.width() * self.scale_factor)),
+                    max(1, int(pixmap.height() * self.scale_factor)),
+                )
         
         # Add a subtle shadow or just rely on OS. Since it's translucent, a slight border might help if there are transparent parts, but raw image is fine.
         # Add tooltip to tell users how to close
@@ -173,6 +184,7 @@ class ClipboardItemWidget(QWidget):
 
 class ClipboardListWidget(QListWidget):
     order_changed = Signal(list)
+    item_right_clicked = Signal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -184,11 +196,18 @@ class ClipboardListWidget(QListWidget):
         new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
         self.order_changed.emit(new_order)
 
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        item = self.itemAt(event.pos())
+        if item and event.button() == Qt.RightButton:
+            self.item_right_clicked.emit(item)
+
 class Panel(QWidget):
     item_clicked = Signal(object)
+    item_right_clicked = Signal(object)
     item_deleted = Signal(object)
     viewed = Signal(object)
-    history_cleared = Signal()
+    history_cleared = Signal(str)
     history_reordered = Signal(list)
     toggle_tracking_clicked = Signal()
     toggle_text_tracking_clicked = Signal()
@@ -236,17 +255,19 @@ class Panel(QWidget):
         title_layout = QHBoxLayout()
         
         # Tracking Toggle Buttons (Text/Image)
-        self.btn_track_text = QPushButton("文")
-        self.btn_track_text.setFixedSize(28, 28)
+        self.btn_track_text = QPushButton("存文")
+        self.btn_track_text.setFixedSize(40, 28)
         self.btn_track_text.setCheckable(True)
         self.btn_track_text.setCursor(Qt.PointingHandCursor)
+        self.btn_track_text.setToolTip("开启/暂停文字监听")
         self.btn_track_text.setStyleSheet("QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #4CAF50; color: white; border-color: #45a049; }")
         self.btn_track_text.clicked.connect(self.toggle_text_tracking_clicked.emit)
         
-        self.btn_track_image = QPushButton("图")
-        self.btn_track_image.setFixedSize(28, 28)
+        self.btn_track_image = QPushButton("存图")
+        self.btn_track_image.setFixedSize(40, 28)
         self.btn_track_image.setCheckable(True)
         self.btn_track_image.setCursor(Qt.PointingHandCursor)
+        self.btn_track_image.setToolTip("开启/暂停图片监听")
         self.btn_track_image.setStyleSheet("QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #2196F3; color: white; border-color: #1E88E5; }")
         self.btn_track_image.clicked.connect(self.toggle_image_tracking_clicked.emit)
         
@@ -268,22 +289,23 @@ class Panel(QWidget):
         self.list_widget = ClipboardListWidget()
         self.list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }")
         self.list_widget.itemClicked.connect(self._on_item_clicked)
+        self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
         self.list_widget.order_changed.connect(self.history_reordered.emit)
         
         bottom_layout = QHBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.btn_filter_text = QPushButton("\u6587")
+        self.btn_filter_text = QPushButton("看文")
         self.btn_filter_text.setCheckable(True)
         self.btn_filter_text.setChecked(True)
-        self.btn_filter_text.setToolTip("显示文本")
+        self.btn_filter_text.setToolTip("显示/隐藏文本记录")
         self.btn_filter_text.setStyleSheet("QPushButton { background-color: #e0e0e0; color: #333; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:checked { background-color: #4CAF50; color: white; }")
         self.btn_filter_text.clicked.connect(self._apply_filter)
         
-        self.btn_filter_image = QPushButton("\u56fe")
+        self.btn_filter_image = QPushButton("看图")
         self.btn_filter_image.setCheckable(True)
         self.btn_filter_image.setChecked(True)
-        self.btn_filter_image.setToolTip("显示图片")
+        self.btn_filter_image.setToolTip("显示/隐藏图片记录")
         self.btn_filter_image.setStyleSheet("QPushButton { background-color: #e0e0e0; color: #333; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:checked { background-color: #2196F3; color: white; }")
         self.btn_filter_image.clicked.connect(self._apply_filter)
 
@@ -317,23 +339,83 @@ class Panel(QWidget):
             self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #888888; color: white; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #777777; }")
 
     def _on_clear_all_clicked(self):
+        if not self._current_history:
+            return
+            
+        has_text = False
+        has_image = False
+        for item in self._current_history:
+            if item.get("type") == "image":
+                has_image = True
+            else:
+                has_text = True
+            if has_text and has_image:
+                break
+                
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("确认")
-        msg_box.setText("确定要清空所有剪贴板历史记录吗？")
-        msg_box.setStyleSheet("QMessageBox { background-color: #ffffff; color: #000000; } QLabel { color: #000000; } QPushButton { color: #000000; }")
-        btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
-        msg_box.addButton("否", QMessageBox.NoRole)
-        msg_box.exec()
-        if msg_box.clickedButton() == btn_yes:
-            self.history_cleared.emit()
+        msg_box.setStyleSheet("QMessageBox { background-color: #ffffff; color: #000000; } QLabel { color: #000000; } QPushButton { color: #000000; padding: 6px 12px; }")
+        
+        if has_text and has_image:
+            msg_box.setWindowTitle("清空选项")
+            msg_box.setText("请选择要清空的剪贴板内容：")
+            
+            btn_text = msg_box.addButton("仅清空文字", QMessageBox.ActionRole)
+            btn_image = msg_box.addButton("仅清空图片", QMessageBox.ActionRole)
+            btn_all = msg_box.addButton("文字和图片", QMessageBox.ActionRole)
+            btn_cancel = msg_box.addButton("取消", QMessageBox.RejectRole)
+            
+            msg_box.exec()
+            clicked = msg_box.clickedButton()
+            
+            if clicked == btn_text:
+                self.history_cleared.emit("text")
+            elif clicked == btn_image:
+                self.history_cleared.emit("image")
+            elif clicked == btn_all:
+                self.history_cleared.emit("all")
+        else:
+            msg_box.setWindowTitle("确认清空")
+            content_type = "图片" if has_image else "文字"
+            msg_box.setText(f"确定要清空所有的{content_type}记录吗？")
+            btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
+            btn_no = msg_box.addButton("否", QMessageBox.NoRole)
+            msg_box.exec()
+            if msg_box.clickedButton() == btn_yes:
+                self.history_cleared.emit("all")
 
     def update_history(self, history_list):
         self._current_history = history_list
+        self._sync_open_image_dialogs()
         self._apply_filter()
+
+    def _sync_open_image_dialogs(self):
+        if not hasattr(self, '_pinned_images'):
+            return
+
+        current_keys = set()
+        for item in self._current_history:
+            if isinstance(item, dict):
+                current_keys.add((item.get("type"), item.get("value", "")))
+
+        still_open = []
+        for dialog in self._pinned_images:
+            item_data = getattr(dialog, 'item_data', None)
+            item_key = None
+            if isinstance(item_data, dict):
+                item_key = (item_data.get("type"), item_data.get("value", ""))
+
+            if item_key is not None and item_key not in current_keys:
+                dialog.close()
+            elif dialog.isVisible():
+                still_open.append(dialog)
+
+        self._pinned_images = still_open
 
     def _apply_filter(self):
         show_text = self.btn_filter_text.isChecked()
         show_image = self.btn_filter_image.isChecked()
+        
+        v_scroll = self.list_widget.verticalScrollBar().value()
         
         self.list_widget.clear()
         for item_data in self._current_history:
@@ -348,7 +430,7 @@ class Panel(QWidget):
                 preview = "[图片]"
             else:
                 text = item_data.get("value", "") if isinstance(item_data, dict) else str(item_data)
-                preview = text.replace('\\n', ' ')
+                preview = text.replace('\n', ' ').replace('\r', '')
                 if len(preview) > 50: preview = preview[:50] + "..."
                 
             list_item = QListWidgetItem()
@@ -359,10 +441,17 @@ class Panel(QWidget):
             widget.viewed.connect(self._on_item_viewed)
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
+            
+        # Restore scroll position after a short delay to allow layout update
+        QTimer.singleShot(0, lambda: self.list_widget.verticalScrollBar().setValue(v_scroll))
 
     def _on_item_clicked(self, item):
         full_item = item.data(Qt.UserRole)
         QTimer.singleShot(10, lambda: self.item_clicked.emit(full_item))
+
+    def _on_item_right_clicked(self, item):
+        full_item = item.data(Qt.UserRole)
+        QTimer.singleShot(10, lambda: self.item_right_clicked.emit(full_item))
 
     def update_position(self, ball_x, ball_y):
         if self._relative_offset is None:
@@ -407,13 +496,14 @@ class Panel(QWidget):
             # Clean up closed ones
             self._pinned_images = [p for p in self._pinned_images if p.isVisible()]
             
-            pinned = PinnedImageDialog(pixmap)
+            pinned = PinnedImageDialog(pixmap, item_data)
             
             # Center it on screen
             from PySide6.QtGui import QGuiApplication
             screen_geo = QGuiApplication.primaryScreen().availableGeometry()
             pinned.move(screen_geo.center() - pinned.rect().center())
             pinned.show()
+            pinned.item_data = item_data
             
             self._pinned_images.append(pinned)
         else:

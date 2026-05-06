@@ -157,10 +157,11 @@ class HotkeyRow(QWidget):
 class SettingsDialog(QDialog):
     settings_saved = Signal(dict) # Emits updated options
 
-    def __init__(self, options, hotkey_mgr, parent=None):
+    def __init__(self, options, hotkey_mgr, clipboard_mgr=None, parent=None):
         super().__init__(parent)
         self.options = options
         self.hotkey_mgr = hotkey_mgr
+        self.clipboard_mgr = clipboard_mgr
         self.setWindowTitle("桌面人偶设置")
         self.setFixedSize(580, 480)
         self.setStyleSheet("""
@@ -265,31 +266,6 @@ class SettingsDialog(QDialog):
         self.chk_hide_ball.stateChanged.connect(self._on_general_changed)
         gen_layout.addWidget(self.chk_hide_ball)
         
-        video_layout = QHBoxLayout()
-        video_label = QLabel("\u5f55\u5c4f\u4fdd\u5b58\u76ee\u5f55:") # 录屏保存目录:
-        self.video_path_input = QLineEdit(self.current_options.get("video_save_path", ""))
-        self.video_path_input.setReadOnly(True)
-        self.video_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
-        btn_browse_video = QPushButton("\u6d4f\u89c8...") # 浏览...
-        btn_browse_video.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
-        btn_browse_video.clicked.connect(self._browse_video_path)
-        video_layout.addWidget(video_label)
-        video_layout.addWidget(self.video_path_input)
-        video_layout.addWidget(btn_browse_video)
-        gen_layout.addLayout(video_layout)
-        
-        pic_layout = QHBoxLayout()
-        pic_label = QLabel("\u56fe\u7247\u7f13\u5b58\u76ee\u5f55:") # 图片缓存目录:
-        self.pic_path_input = QLineEdit(self.current_options.get("picture_save_path", ""))
-        self.pic_path_input.setReadOnly(True)
-        self.pic_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
-        btn_browse_pic = QPushButton("\u6d4f\u89c8...") # 浏览...
-        btn_browse_pic.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
-        btn_browse_pic.clicked.connect(self._browse_pic_path)
-        pic_layout.addWidget(pic_label)
-        pic_layout.addWidget(self.pic_path_input)
-        pic_layout.addWidget(btn_browse_pic)
-        gen_layout.addLayout(pic_layout)
         gen_layout.addStretch()
         gen_layout.addLayout(create_restore_btn(self._restore_general_defaults))
         self.tabs.addTab(self.tab_general, "\u5e38\u89c4\u8bbe\u7f6e") # 常规设置
@@ -309,12 +285,25 @@ class SettingsDialog(QDialog):
         self.spin_limit = QSpinBox()
         self.spin_limit.setRange(1, 999)
         self.spin_limit.setValue(self.current_options.get("clipboard_max_items", 20))
-        self.spin_limit.valueChanged.connect(self._on_clipboard_changed)
+        self.spin_limit.editingFinished.connect(self._on_clipboard_limit_editing_finished)
         self.spin_limit.setStyleSheet("padding: 4px 8px; font-size: 14px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff;")
         limit_layout.addWidget(limit_label)
         limit_layout.addWidget(self.spin_limit)
         limit_layout.addStretch()
         clip_layout.addLayout(limit_layout)
+        
+        pic_layout = QHBoxLayout()
+        pic_label = QLabel("\u56fe\u7247\u7f13\u5b58\u76ee\u5f55:") # 图片缓存目录:
+        self.pic_path_input = QLineEdit(self.current_options.get("picture_save_path", ""))
+        self.pic_path_input.setReadOnly(True)
+        self.pic_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
+        btn_browse_pic = QPushButton("\u6d4f\u89c8...") # 浏览...
+        btn_browse_pic.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_pic.clicked.connect(self._browse_pic_path)
+        pic_layout.addWidget(pic_label)
+        pic_layout.addWidget(self.pic_path_input)
+        pic_layout.addWidget(btn_browse_pic)
+        clip_layout.addLayout(pic_layout)
         
         pic_limit_layout = QHBoxLayout()
         pic_limit_label = QLabel("\u56fe\u7247\u7f13\u5b58\u6700\u5927\u5f20\u6570:") # 图片缓存最大张数:
@@ -331,7 +320,29 @@ class SettingsDialog(QDialog):
         clip_layout.addLayout(create_restore_btn(self._restore_clipboard_defaults))
         self.tabs.addTab(self.tab_clipboard, "\u526a\u8d34\u677f\u8bbe\u7f6e") # 剪贴板设置
         
-        # --- Tab 3: Hotkeys ---
+        # --- Tab 3: Video ---
+        self.tab_video = QWidget()
+        video_tab_layout = QVBoxLayout(self.tab_video)
+        video_tab_layout.setSpacing(15)
+        
+        video_layout = QHBoxLayout()
+        video_label = QLabel("\u5f55\u5c4f\u4fdd\u5b58\u76ee\u5f55:") # 录屏保存目录:
+        self.video_path_input = QLineEdit(self.current_options.get("video_save_path", ""))
+        self.video_path_input.setReadOnly(True)
+        self.video_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
+        btn_browse_video = QPushButton("\u6d4f\u89c8...") # 浏览...
+        btn_browse_video.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_video.clicked.connect(self._browse_video_path)
+        video_layout.addWidget(video_label)
+        video_layout.addWidget(self.video_path_input)
+        video_layout.addWidget(btn_browse_video)
+        video_tab_layout.addLayout(video_layout)
+        
+        video_tab_layout.addStretch()
+        video_tab_layout.addLayout(create_restore_btn(self._restore_video_defaults))
+        self.tabs.addTab(self.tab_video, "\u89c6\u9891\u8bbe\u7f6e") # 视频设置
+        
+        # --- Tab 4: Hotkeys ---
         self.tab_hotkeys = QWidget()
         hk_layout = QVBoxLayout(self.tab_hotkeys)
         hk_layout.setSpacing(5)
@@ -635,31 +646,53 @@ class SettingsDialog(QDialog):
             self._auto_save_options()
 
     def _restore_general_defaults(self):
-        import os
-        from utils.path_helper import get_base_dir
-        
         self.chk_hide_ball.blockSignals(True)
         self.chk_hide_ball.setChecked(DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True))
         self.chk_hide_ball.blockSignals(False)
         
-        default_video_path = os.path.join(get_base_dir(), "video")
-        default_pic_path = os.path.join(get_base_dir(), "picture")
-        
-        self.video_path_input.setText(default_video_path)
-        self.pic_path_input.setText(default_pic_path)
-        
         self.current_options["hide_ball_when_screenshot"] = DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True)
+        self._auto_save_options()
+
+    def _restore_video_defaults(self):
+        import os
+        from utils.path_helper import get_base_dir
+        
+        default_video_path = os.path.join(get_base_dir(), "video")
+        self.video_path_input.setText(default_video_path)
         self.current_options["video_save_path"] = default_video_path
-        self.current_options["picture_save_path"] = default_pic_path
+        self._auto_save_options()
+
+    def _on_clipboard_limit_editing_finished(self):
+        new_val = self.spin_limit.value()
+        old_val = self.current_options.get("clipboard_max_items", 20)
+        
+        if new_val == old_val:
+            return
+            
+        if getattr(self, 'clipboard_mgr', None) is not None:
+            current_history_len = len(self.clipboard_mgr.get_history())
+            if new_val < current_history_len:
+                reply = QMessageBox.question(self, "确认修改", 
+                    "修改后的最大条数小于当前剪贴板历史条数，是否修改？\n修改后将删除最早的内容。",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.No:
+                    self.spin_limit.blockSignals(True)
+                    self.spin_limit.setValue(old_val)
+                    self.spin_limit.blockSignals(False)
+                    return
+                    
+        self.current_options["clipboard_max_items"] = new_val
         self._auto_save_options()
 
     def _on_clipboard_changed(self):
         self.current_options["clipboard_tracking_enabled"] = self.chk_clip_tracking.isChecked()
-        self.current_options["clipboard_max_items"] = self.spin_limit.value()
         self.current_options["clipboard_max_images"] = self.spin_pic_limit.value()
         self._auto_save_options()
 
     def _restore_clipboard_defaults(self):
+        import os
+        from utils.path_helper import get_base_dir
+        
         self.chk_clip_tracking.blockSignals(True)
         self.spin_limit.blockSignals(True)
         self.spin_pic_limit.blockSignals(True)
@@ -667,10 +700,12 @@ class SettingsDialog(QDialog):
         val_tracking = DEFAULT_OPTIONS.get("clipboard_tracking_enabled", True)
         val_max = DEFAULT_OPTIONS.get("clipboard_max_items", 20)
         val_pic_max = DEFAULT_OPTIONS.get("clipboard_max_images", 20)
+        default_pic_path = os.path.join(get_base_dir(), "picture")
         
         self.chk_clip_tracking.setChecked(val_tracking)
         self.spin_limit.setValue(val_max)
         self.spin_pic_limit.setValue(val_pic_max)
+        self.pic_path_input.setText(default_pic_path)
         
         self.chk_clip_tracking.blockSignals(False)
         self.spin_limit.blockSignals(False)
@@ -679,6 +714,7 @@ class SettingsDialog(QDialog):
         self.current_options["clipboard_tracking_enabled"] = val_tracking
         self.current_options["clipboard_max_items"] = val_max
         self.current_options["clipboard_max_images"] = val_pic_max
+        self.current_options["picture_save_path"] = default_pic_path
         self._auto_save_options()
 
     def _on_feature_changed(self):

@@ -34,7 +34,7 @@ class HotkeyManager(QObject):
                         pass
                 self.action_triggered.emit(n, payload_img, payload_rects)
                 
-            keyboard.add_hotkey(key, cb, suppress=True)
+            keyboard.add_hotkey(key, cb, suppress=False)
             self._registered_hotkeys[name] = key
             self.hotkeys[name] = key
             return True

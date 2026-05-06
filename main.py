@@ -163,7 +163,8 @@ class FloatingAssistant:
         
         # Connections - Clipboard
         self.clipboard_mgr.history_changed.connect(self.panel.update_history)
-        self.panel.item_clicked.connect(self.clipboard_mgr.copy_to_clipboard)
+        self.panel.item_clicked.connect(lambda item: self.clipboard_mgr.copy_to_clipboard(item, as_plain_text=False))
+        self.panel.item_right_clicked.connect(self._on_clipboard_item_right_clicked)
         self.panel.item_deleted.connect(self.clipboard_mgr.remove_item)
         self.panel.history_cleared.connect(self.clipboard_mgr.clear_history)
         self.panel.history_reordered.connect(self.clipboard_mgr.set_history)
@@ -278,17 +279,28 @@ class FloatingAssistant:
         self.panel.toggle_visibility(ball_pos.x(), ball_pos.y())
 
     def on_clipboard_ball_moved(self, x, y):
-        # If panel is visible, keep it positioned relative to the sub-ball
-        if self.panel.isVisible():
-            self.panel.update_position(x, y)
+        pass
+
+    def _on_clipboard_item_right_clicked(self, item):
+        if isinstance(item, dict) and item.get("type") == "image":
+            import os
+            import subprocess
+            val = item.get("value", "")
+            if item.get("is_path", False) or (os.path.exists(val) and val.endswith('.png')):
+                if os.path.exists(val):
+                    try:
+                        subprocess.run(['explorer', '/select,', os.path.normpath(val)])
+                    except Exception as e:
+                        print(f"Failed to open image folder: {e}")
+        else:
+            self.clipboard_mgr.copy_to_clipboard(item, as_plain_text=True)
 
     def on_notebook_ball_clicked(self):
         ball_pos = self.notebook_ball.geometry()
         self.notebook_panel.toggle_visibility(ball_pos.x(), ball_pos.y())
 
     def on_notebook_ball_moved(self, x, y):
-        if self.notebook_panel.isVisible():
-            self.notebook_panel.update_position(x, y)
+        pass
 
     def on_screenshot_ball_clicked(self):
         self._trigger_system_screenshot()
@@ -300,8 +312,7 @@ class FloatingAssistant:
         self.search_panel.toggle_visibility(ball_pos.x(), ball_pos.y())
 
     def on_search_ball_moved(self, x, y):
-        if self.search_panel.isVisible():
-            self.search_panel.update_position(x, y)
+        pass
 
     def perform_web_search(self, query):
         import urllib.parse
@@ -535,7 +546,7 @@ class FloatingAssistant:
             self.settings_dialog.activateWindow()
             return
             
-        self.settings_dialog = SettingsDialog(self.options, self.hotkey_mgr)
+        self.settings_dialog = SettingsDialog(self.options, self.hotkey_mgr, self.clipboard_mgr)
         self.settings_dialog.settings_saved.connect(self.apply_settings)
         self.settings_dialog.show()
         
@@ -565,6 +576,7 @@ class FloatingAssistant:
             self.options["video_save_path"] = self.video_save_path
         # Apply UI refresh if needed
         self.clipboard_mgr.history = self.clipboard_mgr.get_history()[: self.clipboard_mgr.max_items]
+        self.clipboard_mgr._save_history()
         self.clipboard_mgr.history_changed.emit(self.clipboard_mgr.history)
         
         # Delete old custom balls

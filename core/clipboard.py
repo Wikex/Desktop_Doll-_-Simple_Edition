@@ -1,6 +1,7 @@
 import json
 import os
 import base64
+import time
 import keyboard
 from PySide6.QtCore import QObject, Signal, QTimer, QBuffer, QIODevice
 from PySide6.QtGui import QClipboard, QImage, QPixmap
@@ -35,6 +36,9 @@ class ClipboardManager(QObject):
         
         # Flag to prevent reading what we just wrote programmatically
         self.ignore_next = False
+        self.last_text = None
+        self.last_text_at = 0.0
+        self.text_dedupe_window = 1.0
 
     def _load_history(self):
         if not os.path.exists(HISTORY_FILE):
@@ -42,10 +46,42 @@ class ClipboardManager(QObject):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 raw = json.load(f)
-                return self._normalize_history(raw)
+                return self._dedupe_history(self._normalize_history(raw))
         except Exception as e:
             print(f"Failed to load history: {e}")
             return []
+
+    def _normalize_text_key(self, text):
+        import unicodedata
+        import re
+        text = text or ""
+        # 剥离行首的常见序号和列表符号 (如 "1. ", "(一)", "- ", "* ")
+        pattern = r'(?m)^\s*(?:[\(（]?(?:[\d]+|[a-zA-Z]|[一二三四五六七八九十百千万]+)[.\)）\]、](?!\d)\s*|[•·*+\-]\s*)'
+        text = re.sub(pattern, '', text)
+        
+        text = unicodedata.normalize("NFKC", text)
+        return "".join(ch for ch in text if unicodedata.category(ch)[0] not in {"Z", "C"})
+
+    def _dedupe_history(self, history):
+        deduped = []
+        seen_text = set()
+        seen_image = set()
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "text":
+                key = self._normalize_text_key(item.get("value", ""))
+                if key in seen_text:
+                    continue
+                seen_text.add(key)
+                deduped.append(item)
+            elif item.get("type") == "image":
+                key = item.get("value", "")
+                if key in seen_image:
+                    continue
+                seen_image.add(key)
+                deduped.append(item)
+        return deduped
 
     def _normalize_history(self, raw_history):
         if not isinstance(raw_history, list):
@@ -99,15 +135,22 @@ class ClipboardManager(QObject):
                 self.last_image_hash = img_hash
                 self.add_image_item(image)
         elif mime_data.hasText() and self.record_text:
-            text = mime_data.text().strip()
+            text = mime_data.text().strip().replace('\r\n', '\n').replace('\r', '\n')
+            html = mime_data.html() if mime_data.hasHtml() else None
             if text:
-                if getattr(self, "last_text", None) == text:
+                normalized_text = self._normalize_text_key(text)
+                now = time.monotonic()
+                if getattr(self, "last_normalized_text", None) == normalized_text and (now - self.last_text_at) < self.text_dedupe_window:
                     return
-                self.last_text = text
-                self.add_text_item(text)
+                self.last_normalized_text = normalized_text
+                self.last_text_at = now
+                self.add_text_item(text, html)
 
-    def _make_text_item(self, text):
-        return {"type": "text", "value": text}
+    def _make_text_item(self, text, html=None):
+        item = {"type": "text", "value": text}
+        if html:
+            item["html"] = html
+        return item
 
     def _make_image_item(self, image):
         if not getattr(self, "picture_save_path", ""):
@@ -154,19 +197,23 @@ class ClipboardManager(QObject):
     def _item_key(self, item):
         if item.get("type") == "image":
             return ("image", item.get("value", ""))
-        return ("text", item.get("value", ""))
+        
+        import re
+        val = item.get("value", "")
+        normalized_val = re.sub(r'\s+', '', val)
+        return ("text", normalized_val)
 
     def _trim_history(self):
         if len(self.history) > self.max_items:
             self.history = self.history[:self.max_items]
 
-    def add_text_item(self, text):
+    def add_text_item(self, text, html=None):
         # Remove if it already exists (deduplication)
-        key = ("text", text)
+        key = ("text", self._normalize_text_key(text))
         self.history = [item for item in self.history if self._item_key(item) != key]
             
         # Add to top (most recent)
-        self.history.insert(0, self._make_text_item(text))
+        self.history.insert(0, self._make_text_item(text, html))
         self._trim_history()
             
         self._save_history()
@@ -200,34 +247,25 @@ class ClipboardManager(QObject):
         key = self._item_key(item_to_remove)
         for item in list(self.history):
             if self._item_key(item) == key:
-                if item.get("type") == "image":
-                    val = item.get("value", "")
-                    if os.path.exists(val) and val.endswith(".png"):
-                        try:
-                            os.remove(val)
-                        except Exception:
-                            pass
                 self.history.remove(item)
                 break
                 
         self._save_history()
         self.history_changed.emit(self.history)
 
-    def clear_history(self):
-        for item in self.history:
-            if item.get("type") == "image":
-                val = item.get("value", "")
-                if os.path.exists(val) and val.endswith(".png"):
-                    try:
-                        os.remove(val)
-                    except Exception:
-                        pass
-        self.history.clear()
+    def clear_history(self, clear_type="all"):
+        if clear_type == "all":
+            self.history.clear()
+        elif clear_type == "text":
+            self.history = [item for item in self.history if item.get("type") != "text"]
+        elif clear_type == "image":
+            self.history = [item for item in self.history if item.get("type") != "image"]
+            
         self._save_history()
         self.history_changed.emit(self.history)
 
     def set_history(self, new_history):
-        self.history = self._normalize_history(new_history)
+        self.history = self._dedupe_history(self._normalize_history(new_history))
         self._save_history()
         # Emit so the UI rebuilds cleanly after a drag-drop reorder
         self.history_changed.emit(self.history)
@@ -253,7 +291,7 @@ class ClipboardManager(QObject):
             self._save_history()
             self.history_changed.emit(self.history)
 
-    def copy_to_clipboard(self, item):
+    def copy_to_clipboard(self, item, as_plain_text=False):
         """Called when user clicks an item to copy it back"""
         self.ignore_next = True
         if isinstance(item, dict) and item.get("type") == "image":
@@ -274,7 +312,14 @@ class ClipboardManager(QObject):
                 self.remove_item(item)
         else:
             text = item.get("value", "") if isinstance(item, dict) else str(item)
-            self._clipboard.setText(text)
+            html = item.get("html", None) if isinstance(item, dict) else None
+            
+            from PySide6.QtCore import QMimeData
+            mime = QMimeData()
+            mime.setText(text)
+            if html and not as_plain_text:
+                mime.setHtml(html)
+            self._clipboard.setMimeData(mime)
             QTimer.singleShot(50, lambda: keyboard.send("ctrl+v"))
 
 
