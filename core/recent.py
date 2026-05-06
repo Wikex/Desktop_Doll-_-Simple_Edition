@@ -27,9 +27,10 @@ class RecentManager(QObject):
         self._last_scan_mtime = {} # path -> mtime
 
     def set_tracking_enabled(self, enabled):
+        was_enabled = self.tracking_enabled
         self.tracking_enabled = enabled
-        if enabled:
-            self.tick_scan()
+        if enabled and not was_enabled:
+            self.tick_scan(silent=True)
 
     def set_excluded_extensions(self, exts):
         if isinstance(exts, list):
@@ -73,8 +74,8 @@ class RecentManager(QObject):
         except Exception:
             pass
 
-    def tick_scan(self):
-        if not self.tracking_enabled:
+    def tick_scan(self, silent=False):
+        if not self.tracking_enabled and not silent:
             return
             
         changed = False
@@ -94,6 +95,9 @@ class RecentManager(QObject):
             if self._last_scan_mtime.get(lnk) == mtime:
                 continue
             self._last_scan_mtime[lnk] = mtime
+            
+            if silent:
+                continue
             
             target = resolve_lnk_target(lnk)
             if not target or not os.path.exists(target):
