@@ -370,12 +370,7 @@ class SettingsDialog(QDialog):
         btn_manage_excluded.setStyleSheet("padding: 6px 14px; background-color: #ef4444; color: white; border-radius: 6px; font-weight: bold;")
         btn_manage_excluded.clicked.connect(self._open_recent_excluded_dialog)
         
-        btn_clear_recent = QPushButton("清空最近使用...")
-        btn_clear_recent.setStyleSheet("padding: 6px 14px; background-color: #f59e0b; color: white; border-radius: 6px; font-weight: bold;")
-        btn_clear_recent.clicked.connect(self._on_clear_recent_clicked)
-        
         recent_btn_layout.addWidget(btn_manage_excluded)
-        recent_btn_layout.addWidget(btn_clear_recent)
         recent_btn_layout.addStretch()
         recent_layout.addLayout(recent_btn_layout)
         
@@ -797,14 +792,6 @@ class SettingsDialog(QDialog):
             self._auto_save_options()
             if getattr(self, 'recent_mgr', None):
                 self.recent_mgr.set_excluded_extensions(new_excluded)
-
-    def _on_clear_recent_clicked(self):
-        reply = QMessageBox.question(self, "确认清空", 
-            "确定要清空所有的最近使用记录吗？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            if getattr(self, 'recent_mgr', None):
-                self.recent_mgr.clear_history()
 
     def _restore_recent_defaults(self):
         self.chk_recent_tracking.blockSignals(True)
