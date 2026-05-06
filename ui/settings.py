@@ -798,6 +798,14 @@ class SettingsDialog(QDialog):
             if getattr(self, 'recent_mgr', None):
                 self.recent_mgr.set_excluded_extensions(new_excluded)
 
+    def _on_clear_recent_clicked(self):
+        reply = QMessageBox.question(self, "确认清空", 
+            "确定要清空所有的最近使用记录吗？",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if getattr(self, 'recent_mgr', None):
+                self.recent_mgr.clear_history()
+
     def _restore_recent_defaults(self):
         self.chk_recent_tracking.blockSignals(True)
         self.spin_recent_limit.blockSignals(True)
