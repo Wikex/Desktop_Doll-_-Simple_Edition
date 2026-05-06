@@ -1,5 +1,39 @@
 import os
 import win32com.client
+import winreg
+
+def ensure_windows_recent_tracking_enabled():
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced", 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE)
+        try:
+            value, _ = winreg.QueryValueEx(key, "Start_TrackDocs")
+            if value == 0:
+                winreg.SetValueEx(key, "Start_TrackDocs", 0, winreg.REG_DWORD, 1)
+        except FileNotFoundError:
+            winreg.SetValueEx(key, "Start_TrackDocs", 0, winreg.REG_DWORD, 1)
+        winreg.CloseKey(key)
+    except Exception as e:
+        print(f"Failed to enable Windows recent tracking: {e}")
+
+def get_active_window_exe():
+    import win32gui
+    import win32process
+    import win32api
+    import win32con
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        if not hwnd:
+            return None
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        
+        hndl = win32api.OpenProcess(win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, 0, pid)
+        if hndl:
+            path = win32process.GetModuleFileNameEx(hndl, 0)
+            win32api.CloseHandle(hndl)
+            return path
+    except Exception:
+        pass
+    return None
 
 def get_recent_dir():
     return os.path.join(os.environ.get('APPDATA', ''), r'Microsoft\Windows\Recent')

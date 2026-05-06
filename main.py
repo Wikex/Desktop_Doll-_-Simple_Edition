@@ -602,7 +602,7 @@ class FloatingAssistant:
             self.settings_dialog.activateWindow()
             return
             
-        self.settings_dialog = SettingsDialog(self.options, self.hotkey_mgr, self.clipboard_mgr)
+        self.settings_dialog = SettingsDialog(self.options, self.hotkey_mgr, self.clipboard_mgr, self.recent_mgr)
         self.settings_dialog.settings_saved.connect(self.apply_settings)
         self.settings_dialog.show()
         

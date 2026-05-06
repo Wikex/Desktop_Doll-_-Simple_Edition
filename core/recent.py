@@ -2,7 +2,7 @@ import os
 import json
 import time
 from PySide6.QtCore import QObject, Signal, QTimer
-from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target
+from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled, get_active_window_exe
 from utils.path_helper import get_base_dir
 
 HISTORY_FILE = os.path.join(get_base_dir(), "recent_history.json")
@@ -15,6 +15,8 @@ class RecentManager(QObject):
         self.max_items = max_items
         self.tracking_enabled = True
         self.excluded_extensions = set()
+        
+        ensure_windows_recent_tracking_enabled()
         
         self.history = self._load_history()
         
@@ -30,7 +32,10 @@ class RecentManager(QObject):
             self.tick_scan()
 
     def set_excluded_extensions(self, exts):
-        self.excluded_extensions = set(self._normalize_ext(e) for e in exts if e.strip())
+        if isinstance(exts, list):
+            self.excluded_extensions = {self._normalize_ext(e): True for e in exts if e.strip()}
+        else:
+            self.excluded_extensions = {self._normalize_ext(k): v for k, v in exts.items() if k.strip()}
         self._purge_excluded()
 
     def _normalize_ext(self, ext):
@@ -43,7 +48,7 @@ class RecentManager(QObject):
         changed = False
         new_history = []
         for item in self.history:
-            if item.get("ext") not in self.excluded_extensions:
+            if not self.excluded_extensions.get(item.get("ext"), False):
                 new_history.append(item)
             else:
                 changed = True
@@ -72,13 +77,43 @@ class RecentManager(QObject):
         if not self.tracking_enabled:
             return
             
+        changed = False
+        
         try:
             lnk_paths = list_recent_lnk_files()
         except Exception:
-            return
-
-        changed = False
+            lnk_paths = []
+            
+        # Collect active app
+        active_app = get_active_window_exe()
         
+        # Process active app
+        if active_app and os.path.exists(active_app) and not is_directory_target(active_app):
+            # Ignore self
+            if "桌面人偶" not in active_app and "python" not in active_app.lower():
+                _, ext = os.path.splitext(active_app)
+                ext = self._normalize_ext(ext)
+                if not self.excluded_extensions.get(ext, False):
+                    name = os.path.basename(active_app)
+                    existing_idx = -1
+                    for i, item in enumerate(self.history):
+                        if item.get("path") == active_app:
+                            existing_idx = i
+                            break
+                    # only update if it's new or not at the top
+                    if existing_idx != 0:
+                        new_item = {
+                            "path": active_app,
+                            "name": name,
+                            "ext": ext,
+                            "is_app": ext == ".exe",
+                            "last_seen": time.time()
+                        }
+                        if existing_idx > 0:
+                            self.history.pop(existing_idx)
+                        self.history.insert(0, new_item)
+                        changed = True
+
         # Take the top N recent shortcuts to process
         for lnk in lnk_paths[:50]:
             try:
@@ -100,7 +135,7 @@ class RecentManager(QObject):
             _, ext = os.path.splitext(target)
             ext = self._normalize_ext(ext)
             
-            if ext in self.excluded_extensions:
+            if self.excluded_extensions.get(ext, False):
                 continue
                 
             # Add to history
@@ -157,14 +192,16 @@ class RecentManager(QObject):
         self.clean_missing_files()
         return self.history
 
-    def open_item(self, path):
+    def open_item(self, item):
+        path = item.get("path") if isinstance(item, dict) else str(item)
         if os.path.exists(path):
             try:
                 os.startfile(path)
             except Exception as e:
                 print(f"Failed to open {path}: {e}")
 
-    def open_item_location(self, path):
+    def open_item_location(self, item):
+        path = item.get("path") if isinstance(item, dict) else str(item)
         if os.path.exists(path):
             import subprocess
             try:
