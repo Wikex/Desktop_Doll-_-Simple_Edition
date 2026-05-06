@@ -172,8 +172,13 @@ class ClipboardItemWidget(QWidget):
             self.label.setStyleSheet("background: transparent;")
             layout.addWidget(self.label, 1)
         else:
-            self.label = QLabel(text)
+            from PySide6.QtGui import QFontMetrics
+            self.label = QLabel()
             self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
+            fm = QFontMetrics(self.label.font())
+            elided_text = fm.elidedText(text, Qt.ElideRight, 240)
+            self.label.setText(elided_text)
+            self.label.setToolTip(text)
             layout.addWidget(self.label, 1)
         
     def _on_delete_clicked(self):
@@ -190,6 +195,7 @@ class ClipboardListWidget(QListWidget):
         self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         
     def dropEvent(self, event):
         super().dropEvent(event)

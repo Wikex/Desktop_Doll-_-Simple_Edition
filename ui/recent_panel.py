@@ -8,10 +8,19 @@ from ui.recent_dialogs import ExcludedExtensionsDialog, ExtensionFilterDialog
 
 class RecentListWidget(QListWidget):
     item_right_clicked = Signal(object)
+    order_changed = Signal(list)
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
+        self.order_changed.emit(new_order)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -40,12 +49,22 @@ class RecentItemWidget(QWidget):
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
         
-        name_label = QLabel(name)
+        name_label = QLabel()
         name_label.setStyleSheet("color: #000000; font-size: 13px; font-weight: bold; background: transparent;")
         
-        path_label = QLabel(path)
+        path_label = QLabel()
         path_label.setStyleSheet("color: #666666; font-size: 11px; background: transparent;")
         path_label.setToolTip(path)
+        
+        from PySide6.QtGui import QFontMetrics
+        name_fm = QFontMetrics(name_label.font())
+        path_fm = QFontMetrics(path_label.font())
+        
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 250)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 250)
+        
+        name_label.setText(elided_name)
+        path_label.setText(elided_path)
         
         text_layout.addWidget(name_label)
         text_layout.addWidget(path_label)
@@ -59,6 +78,7 @@ class RecentPanel(QWidget):
     excluded_extensions_changed = Signal(list)
     visibility_dict_changed = Signal(dict)
     history_cleared = Signal()
+    history_reordered = Signal(list)
 
     def __init__(self):
         super().__init__()
@@ -126,8 +146,9 @@ class RecentPanel(QWidget):
         
         self.list_widget = RecentListWidget()
         self.list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }")
-        self.list_widget.itemClicked.connect(self._on_item_clicked)
+        self.list_widget.itemDoubleClicked.connect(self._on_item_clicked)
         self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
+        self.list_widget.order_changed.connect(self.history_reordered.emit)
         
         bottom_layout = QHBoxLayout()
         bottom_layout.setContentsMargins(0, 0, 0, 0)

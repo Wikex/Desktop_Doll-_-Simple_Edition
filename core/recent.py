@@ -2,7 +2,7 @@ import os
 import json
 import time
 from PySide6.QtCore import QObject, Signal, QTimer
-from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled, get_active_window_exe
+from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled
 from utils.path_helper import get_base_dir
 
 HISTORY_FILE = os.path.join(get_base_dir(), "recent_history.json")
@@ -83,36 +83,6 @@ class RecentManager(QObject):
             lnk_paths = list_recent_lnk_files()
         except Exception:
             lnk_paths = []
-            
-        # Collect active app
-        active_app = get_active_window_exe()
-        
-        # Process active app
-        if active_app and os.path.exists(active_app) and not is_directory_target(active_app):
-            # Ignore self
-            if "桌面人偶" not in active_app and "python" not in active_app.lower():
-                _, ext = os.path.splitext(active_app)
-                ext = self._normalize_ext(ext)
-                if not self.excluded_extensions.get(ext, False):
-                    name = os.path.basename(active_app)
-                    existing_idx = -1
-                    for i, item in enumerate(self.history):
-                        if item.get("path") == active_app:
-                            existing_idx = i
-                            break
-                    # only update if it's new or not at the top
-                    if existing_idx != 0:
-                        new_item = {
-                            "path": active_app,
-                            "name": name,
-                            "ext": ext,
-                            "is_app": ext == ".exe",
-                            "last_seen": time.time()
-                        }
-                        if existing_idx > 0:
-                            self.history.pop(existing_idx)
-                        self.history.insert(0, new_item)
-                        changed = True
 
         # Take the top N recent shortcuts to process
         for lnk in lnk_paths[:50]:
@@ -187,6 +157,11 @@ class RecentManager(QObject):
             self.history.clear()
             self._save_history()
             self.items_changed.emit(self.history)
+
+    def set_history(self, new_history):
+        self.history = new_history
+        self._save_history()
+        self.items_changed.emit(self.history)
 
     def get_items(self):
         self.clean_missing_files()

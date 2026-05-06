@@ -187,6 +187,7 @@ class FloatingAssistant:
         self.recent_panel.excluded_extensions_changed.connect(self._on_recent_excluded_extensions_changed)
         self.recent_panel.visibility_dict_changed.connect(self._on_recent_visibility_dict_changed)
         self.recent_panel.history_cleared.connect(self.recent_mgr.clear_history)
+        self.recent_panel.history_reordered.connect(self.recent_mgr.set_history)
         
         self.notebook_panel.content_changed.connect(self.notebook_mgr.update_content)
         self.hotkey_mgr.action_triggered.connect(self.on_action_triggered)
