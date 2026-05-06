@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QLineEdit, QPushButton, QWidget, QTabWidget,
-                               QApplication, QMessageBox, QCheckBox, QSpinBox, QFileDialog)
+                               QApplication, QMessageBox, QCheckBox, QSpinBox, QFileDialog, QComboBox)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent, QIcon, QCloseEvent
 from utils.config import save_hotkeys, save_option, DEFAULT_OPTIONS, DEFAULT_HOTKEYS
@@ -338,6 +338,23 @@ class SettingsDialog(QDialog):
         video_layout.addWidget(self.video_path_input)
         video_layout.addWidget(btn_browse_video)
         video_tab_layout.addLayout(video_layout)
+        
+        format_layout = QHBoxLayout()
+        format_label = QLabel("保存格式:")
+        self.combo_video_format = QComboBox()
+        self.combo_video_format.addItems(["mp4", "webm"])
+        current_fmt = self.current_options.get("video_save_format", "mp4").lower()
+        if current_fmt in ["mp4", "webm"]:
+            self.combo_video_format.setCurrentText(current_fmt)
+        else:
+            self.combo_video_format.setCurrentText("mp4")
+        self.combo_video_format.setStyleSheet("padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; color: #0f172a;")
+        self.combo_video_format.currentTextChanged.connect(self._on_video_format_changed)
+        
+        format_layout.addWidget(format_label)
+        format_layout.addWidget(self.combo_video_format)
+        format_layout.addStretch()
+        video_tab_layout.addLayout(format_layout)
         
         video_tab_layout.addStretch()
         video_tab_layout.addLayout(create_restore_btn(self._restore_video_defaults))
@@ -698,6 +715,12 @@ class SettingsDialog(QDialog):
         default_video_path = os.path.join(get_base_dir(), "video")
         self.video_path_input.setText(default_video_path)
         self.current_options["video_save_path"] = default_video_path
+        self.combo_video_format.setCurrentText("mp4")
+        self.current_options["video_save_format"] = "mp4"
+        self._auto_save_options()
+
+    def _on_video_format_changed(self, text):
+        self.current_options["video_save_format"] = text
         self._auto_save_options()
 
     def _on_clipboard_limit_editing_finished(self):

@@ -38,6 +38,7 @@ DEFAULT_OPTIONS = {
     "record_image": True,
     "hide_ball_when_screenshot": True,
     "video_save_path": "",
+    "video_save_format": "mp4",
     "picture_save_path": "",
     "custom_apps": [],
     "recent_tracking_enabled": True,

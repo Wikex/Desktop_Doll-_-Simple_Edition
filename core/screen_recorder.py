@@ -12,10 +12,11 @@ class ScreenRecorderThread(QThread):
     finished_recording = Signal(str)
     error_occurred = Signal(str)
     
-    def __init__(self, rect: QRect, save_dir: str):
+    def __init__(self, rect: QRect, save_dir: str, save_format: str = "mp4"):
         super().__init__()
         self.rect = rect
         self.save_dir = save_dir
+        self.save_format = save_format.lower()
         self._running = False
         
     def stop(self):
@@ -27,7 +28,11 @@ class ScreenRecorderThread(QThread):
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir, exist_ok=True)
                 
-            filename = datetime.now().strftime("录屏_%Y%m%d_%H%M%S.mp4")
+            ext = self.save_format
+            if ext not in ["mp4", "webm"]:
+                ext = "mp4"
+                
+            filename = datetime.now().strftime(f"录屏_%Y%m%d_%H%M%S.{ext}")
             filepath = os.path.join(self.save_dir, filename)
             
             v_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
@@ -52,7 +57,11 @@ class ScreenRecorderThread(QThread):
                 "height": height
             }
             
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            if ext == "webm":
+                fourcc = cv2.VideoWriter_fourcc(*'VP80')
+            else:
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                
             fps = 20.0
             out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
             

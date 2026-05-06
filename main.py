@@ -389,7 +389,8 @@ class FloatingAssistant:
         from PySide6.QtGui import QColor
         self.record_ball.bg_color = QColor(50, 200, 50, 230) # Green indicating recording
         self.record_ball.update()
-        self.recorder_thread = ScreenRecorderThread(rect, self.video_save_path)
+        fmt = self.options.get("video_save_format", "mp4")
+        self.recorder_thread = ScreenRecorderThread(rect, self.video_save_path, save_format=fmt)
         self.recorder_thread.finished_recording.connect(self._on_recording_saved)
         self.recorder_thread.error_occurred.connect(self._on_recording_error)
         self.recorder_thread.start()
