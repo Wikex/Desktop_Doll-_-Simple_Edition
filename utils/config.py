@@ -29,7 +29,20 @@ DEFAULT_OPTIONS = {
     "enable_smart_screenshot_ball": True,
     "enable_record_ball": True,
     "enable_search_ball": True,
-    "custom_apps": []
+    "enable_recent_ball": True,
+    "clipboard_tracking_enabled": True,
+    "clipboard_max_items": 20,
+    "clipboard_max_images": 20,
+    "record_text": True,
+    "record_image": True,
+    "hide_ball_when_screenshot": True,
+    "video_save_path": "",
+    "picture_save_path": "",
+    "custom_apps": [],
+    "recent_tracking_enabled": True,
+    "recent_max_items": 30,
+    "recent_excluded_extensions": [],
+    "recent_extension_visibility": {}
 }
 
 def load_config():

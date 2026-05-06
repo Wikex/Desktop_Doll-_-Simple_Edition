@@ -10,7 +10,6 @@ class TrayIcon(QObject):
     toggle_hide_ball_when_screenshot_requested = Signal()
     change_clipboard_max_items_requested = Signal(int)
     toggle_clipboard_tracking_requested = Signal()
-    change_video_path_requested = Signal(str)
     change_clipboard_record_text_requested = Signal(bool)
     change_clipboard_record_image_requested = Signal(bool)
     change_browser_path_requested = Signal(str)
@@ -53,10 +52,6 @@ class TrayIcon(QObject):
         self.action_hide_ball.setChecked(self.hide_ball_when_screenshot)
         self.action_hide_ball.triggered.connect(self._on_toggle_hide_ball)
         self.menu.addAction(self.action_hide_ball)
-
-        self.action_video_path = QAction("录屏保存目录...", self) # 录屏保存目录...
-        self.action_video_path.triggered.connect(self._on_change_video_path)
-        self.menu.addAction(self.action_video_path)
         self.menu.addSeparator()
 
         # 4. Settings
@@ -109,12 +104,6 @@ class TrayIcon(QObject):
     def set_clipboard_tracking_enabled(self, checked):
         self.clipboard_tracking_enabled = checked
         self.action_clipboard_tracking.setChecked(checked)
-
-    def _on_change_video_path(self):
-        from PySide6.QtWidgets import QFileDialog
-        path = QFileDialog.getExistingDirectory(None, "\u9009\u62e9\u5f55\u5c4f\u4fdd\u5b58\u6587\u4ef6\u5939", "") # 选择录屏保存文件夹
-        if path:
-            self.change_video_path_requested.emit(path)
 
     def show(self):
         self.tray.show()

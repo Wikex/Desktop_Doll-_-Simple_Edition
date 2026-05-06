@@ -40,6 +40,8 @@ from ui.search_box import SearchBoxPanel
 from core.screen_recorder import ScreenRecorderThread
 from core.notebook import NotebookManager
 from utils.config import load_options, save_option
+from core.recent import RecentManager
+from ui.recent_panel import RecentPanel
 import sys
 import math
 import keyboard 
@@ -99,6 +101,9 @@ class FloatingAssistant:
         self.search_ball = SubBall(self.ball, text="\U0001f50d", radius=80, angle=0, tooltip="\u641c\u7d22", bg_color=QColor(156, 39, 176, 230))
         self.sub_balls.append(self.search_ball)
 
+        self.recent_ball = SubBall(self.ball, text="🕘", radius=80, angle=0, tooltip="最近使用", bg_color=QColor(0, 150, 136, 230))
+        self.sub_balls.append(self.recent_ball)
+
         # --- Load custom apps ---
         custom_apps = self.options.get("custom_apps", [])
         from PySide6.QtWidgets import QFileIconProvider
@@ -117,6 +122,8 @@ class FloatingAssistant:
             
         self.notebook_mgr = NotebookManager()
         self.notebook_panel = NotebookPanel()
+        self.recent_mgr = RecentManager()
+        self.recent_panel = RecentPanel()
         self.panel = Panel()
         self.is_recording = False
         self.video_save_path = self.options.get("video_save_path", "")
@@ -126,6 +133,7 @@ class FloatingAssistant:
             self.options["video_save_path"] = self.video_save_path
         
         self.notebook_panel.set_main_ball(self.ball)
+        self.recent_panel.set_main_ball(self.ball)
         self.search_panel = SearchBoxPanel()
         self.search_panel.set_main_ball(self.ball)
         self.search_panel.search_requested.connect(self.perform_web_search)
@@ -148,6 +156,8 @@ class FloatingAssistant:
         self.smart_screenshot_ball.clicked.connect(self.on_smart_screenshot_clicked)
         self.notebook_ball.clicked.connect(self.on_notebook_ball_clicked)
         self.notebook_ball.position_changed.connect(self.on_notebook_ball_moved)
+        self.recent_ball.clicked.connect(self.on_recent_ball_clicked)
+        self.recent_ball.position_changed.connect(self.on_recent_ball_moved)
 
         # Connections - System
         self.tray.quit_requested.connect(self.quit_app)
@@ -157,7 +167,6 @@ class FloatingAssistant:
         self.tray.toggle_hide_ball_when_screenshot_requested.connect(self.toggle_hide_ball_when_screenshot)
         self.tray.change_clipboard_max_items_requested.connect(self.set_clipboard_max_items)
         self.tray.toggle_clipboard_tracking_requested.connect(self.toggle_clipboard_tracking)
-        self.tray.change_video_path_requested.connect(self.set_video_save_path)
         self.panel.toggle_text_tracking_clicked.connect(self.toggle_record_text)
         self.panel.toggle_image_tracking_clicked.connect(self.toggle_record_image)
         
@@ -169,11 +178,28 @@ class FloatingAssistant:
         self.panel.history_cleared.connect(self.clipboard_mgr.clear_history)
         self.panel.history_reordered.connect(self.clipboard_mgr.set_history)
         self.panel.toggle_tracking_clicked.connect(self.toggle_clipboard_tracking)
+        
+        # Connections - Recent
+        self.recent_mgr.items_changed.connect(self.recent_panel.update_items)
+        self.recent_panel.item_clicked.connect(self.recent_mgr.open_item)
+        self.recent_panel.item_right_clicked.connect(self.recent_mgr.open_item_location)
+        self.recent_panel.toggle_tracking_clicked.connect(self.toggle_recent_tracking)
+        self.recent_panel.excluded_extensions_changed.connect(self._on_recent_excluded_extensions_changed)
+        self.recent_panel.visibility_dict_changed.connect(self._on_recent_visibility_dict_changed)
+        
         self.notebook_panel.content_changed.connect(self.notebook_mgr.update_content)
         self.hotkey_mgr.action_triggered.connect(self.on_action_triggered)
         
         # Initialize panel with loaded history
         self.panel.update_history(self.clipboard_mgr.get_history())
+
+        self.recent_mgr.max_items = self.options.get("recent_max_items", 30)
+        self.recent_mgr.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
+        self.recent_mgr.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
+        self.recent_panel.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
+        self.recent_panel.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
+        self.recent_panel.set_visibility_dict(self.options.get("recent_extension_visibility", {}))
+        self.recent_panel.update_items(self.recent_mgr.get_items())
 
         # Initial show
         self.ball.move_to_bottom_right()
@@ -312,6 +338,13 @@ class FloatingAssistant:
         self.search_panel.toggle_visibility(ball_pos.x(), ball_pos.y())
 
     def on_search_ball_moved(self, x, y):
+        pass
+
+    def on_recent_ball_clicked(self):
+        ball_pos = self.recent_ball.geometry()
+        self.recent_panel.toggle_visibility(ball_pos.x(), ball_pos.y())
+
+    def on_recent_ball_moved(self, x, y):
         pass
 
     def perform_web_search(self, query):
@@ -515,6 +548,23 @@ class FloatingAssistant:
         self.clipboard_mgr.record_image = new_val
         self.panel.set_content_tracking_states(self.options.get("record_text", True), new_val)
         
+    def toggle_recent_tracking(self):
+        current = self.options.get("recent_tracking_enabled", True)
+        new_val = not current
+        self.options["recent_tracking_enabled"] = new_val
+        save_option("recent_tracking_enabled", new_val)
+        self.recent_mgr.set_tracking_enabled(new_val)
+        self.recent_panel.set_tracking_enabled(new_val)
+
+    def _on_recent_excluded_extensions_changed(self, exts):
+        self.options["recent_excluded_extensions"] = exts
+        save_option("recent_excluded_extensions", exts)
+        self.recent_mgr.set_excluded_extensions(exts)
+
+    def _on_recent_visibility_dict_changed(self, visibility_dict):
+        self.options["recent_extension_visibility"] = visibility_dict
+        save_option("recent_extension_visibility", visibility_dict)
+
     def _trigger_system_screenshot(self):
         # 释放所有可能的修饰键（避免组合键冲突，如 win+shift+s 触发失败）
         self._hide_balls_for_screenshot()
@@ -535,6 +585,7 @@ class FloatingAssistant:
             self.panel.hide()
             self.notebook_panel.hide()
             self.search_panel.hide()
+            self.recent_panel.hide()
         else:
             self.ball.show()
 
@@ -650,6 +701,13 @@ class FloatingAssistant:
             else:
                 self.search_ball.hide()
                 self.search_panel.hide()
+
+            if self.options.get("enable_recent_ball", True):
+                self.recent_ball.reset_position()
+                self.recent_ball.show()
+            else:
+                self.recent_ball.hide()
+                self.recent_panel.hide()
 
             for sb in self.sub_balls:
                 if hasattr(sb, 'custom_app_path'):
