@@ -59,11 +59,18 @@ class ScreenRecorderThread(QThread):
             
             if ext == "webm":
                 fourcc = cv2.VideoWriter_fourcc(*'VP80')
+                fps = 20.0
+                out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
             else:
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                # Try H264 via Media Foundation backend
+                fourcc = cv2.VideoWriter_fourcc(*'H264')
+                fps = 20.0
+                out = cv2.VideoWriter(filepath, cv2.CAP_MSMF, fourcc, fps, (width, height))
                 
-            fps = 20.0
-            out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
+                # Fallback to standard MP4v if H264 fails to initialize
+                if not out.isOpened():
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
             
             if not out.isOpened():
                 self.error_occurred.emit("无法初始化视频写入器")
