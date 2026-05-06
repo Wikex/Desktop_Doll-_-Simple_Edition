@@ -247,7 +247,7 @@ class SettingsDialog(QDialog):
         
         # Helper for Restore Default Buttons
         def create_restore_btn(callback):
-            btn = QPushButton("\u6062\u590d\u9ed8\u8ba4\u8bbe\u7f6e") # 恢复默认设置
+            btn = QPushButton("恢复默认") # 恢复默认设置
             btn.setStyleSheet("padding: 6px 16px; font-size: 13px; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #475569; border-radius: 6px; font-weight: bold;")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(callback)
@@ -262,27 +262,27 @@ class SettingsDialog(QDialog):
         gen_layout = QVBoxLayout(self.tab_general)
         gen_layout.setSpacing(15)
         
-        self.chk_hide_ball = QCheckBox("\u622a\u5c4f\u65f6\u81ea\u52a8\u9690\u85cf\u60ac\u6d6e\u7403") # 截屏时自动隐藏悬浮球
+        self.chk_hide_ball = QCheckBox("截屏时自动隐藏悬浮球") # 截屏时自动隐藏悬浮球
         self.chk_hide_ball.setChecked(self.current_options.get("hide_ball_when_screenshot", True))
         self.chk_hide_ball.stateChanged.connect(self._on_general_changed)
         gen_layout.addWidget(self.chk_hide_ball)
         
         gen_layout.addStretch()
         gen_layout.addLayout(create_restore_btn(self._restore_general_defaults))
-        self.tabs.addTab(self.tab_general, "\u5e38\u89c4\u8bbe\u7f6e") # 常规设置
+        self.tabs.addTab(self.tab_general, "常规") # 常规设置
         
         # --- Tab 2: Clipboard ---
         self.tab_clipboard = QWidget()
         clip_layout = QVBoxLayout(self.tab_clipboard)
         clip_layout.setSpacing(15)
         
-        self.chk_clip_tracking = QCheckBox("\u76d1\u542c\u526a\u8d34\u677f\u53d8\u5316") # 监听剪贴板变化
+        self.chk_clip_tracking = QCheckBox("监听剪贴板变化") # 监听剪贴板变化
         self.chk_clip_tracking.setChecked(self.current_options.get("clipboard_tracking_enabled", True))
         self.chk_clip_tracking.stateChanged.connect(self._on_clipboard_changed)
         clip_layout.addWidget(self.chk_clip_tracking)
         
         limit_layout = QHBoxLayout()
-        limit_label = QLabel("\u526a\u8d34\u677f\u5386\u53f2\u6700\u5927\u6761\u6570:") # 剪贴板历史最大条数:
+        limit_label = QLabel("最大条数:") # 剪贴板历史最大条数:
         self.spin_limit = QSpinBox()
         self.spin_limit.setRange(1, 999)
         self.spin_limit.setValue(self.current_options.get("clipboard_max_items", 20))
@@ -294,11 +294,11 @@ class SettingsDialog(QDialog):
         clip_layout.addLayout(limit_layout)
         
         pic_layout = QHBoxLayout()
-        pic_label = QLabel("\u56fe\u7247\u7f13\u5b58\u76ee\u5f55:") # 图片缓存目录:
+        pic_label = QLabel("图片缓存目录:") # 图片缓存目录:
         self.pic_path_input = QLineEdit(self.current_options.get("picture_save_path", ""))
         self.pic_path_input.setReadOnly(True)
         self.pic_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
-        btn_browse_pic = QPushButton("\u6d4f\u89c8...") # 浏览...
+        btn_browse_pic = QPushButton("浏览...") # 浏览...
         btn_browse_pic.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
         btn_browse_pic.clicked.connect(self._browse_pic_path)
         pic_layout.addWidget(pic_label)
@@ -307,7 +307,7 @@ class SettingsDialog(QDialog):
         clip_layout.addLayout(pic_layout)
         
         pic_limit_layout = QHBoxLayout()
-        pic_limit_label = QLabel("\u56fe\u7247\u7f13\u5b58\u6700\u5927\u5f20\u6570:") # 图片缓存最大张数:
+        pic_limit_label = QLabel("图片缓存最大张数:") # 图片缓存最大张数:
         self.spin_pic_limit = QSpinBox()
         self.spin_pic_limit.setRange(1, 999)
         self.spin_pic_limit.setValue(self.current_options.get("clipboard_max_images", 20))
@@ -319,7 +319,7 @@ class SettingsDialog(QDialog):
         clip_layout.addLayout(pic_limit_layout)
         clip_layout.addStretch()
         clip_layout.addLayout(create_restore_btn(self._restore_clipboard_defaults))
-        self.tabs.addTab(self.tab_clipboard, "\u526a\u8d34\u677f\u8bbe\u7f6e") # 剪贴板设置
+        self.tabs.addTab(self.tab_clipboard, "剪贴板") # 剪贴板设置
         
         # --- Tab 3: Video ---
         self.tab_video = QWidget()
@@ -327,11 +327,11 @@ class SettingsDialog(QDialog):
         video_tab_layout.setSpacing(15)
         
         video_layout = QHBoxLayout()
-        video_label = QLabel("\u5f55\u5c4f\u4fdd\u5b58\u76ee\u5f55:") # 录屏保存目录:
+        video_label = QLabel("保存目录:") # 录屏保存目录:
         self.video_path_input = QLineEdit(self.current_options.get("video_save_path", ""))
         self.video_path_input.setReadOnly(True)
         self.video_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
-        btn_browse_video = QPushButton("\u6d4f\u89c8...") # 浏览...
+        btn_browse_video = QPushButton("浏览...") # 浏览...
         btn_browse_video.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
         btn_browse_video.clicked.connect(self._browse_video_path)
         video_layout.addWidget(video_label)
@@ -358,7 +358,7 @@ class SettingsDialog(QDialog):
         
         video_tab_layout.addStretch()
         video_tab_layout.addLayout(create_restore_btn(self._restore_video_defaults))
-        self.tabs.addTab(self.tab_video, "\u89c6\u9891\u8bbe\u7f6e") # 视频设置
+        self.tabs.addTab(self.tab_video, "视频") # 视频设置
         
         # --- Tab 4: Recent Files ---
         self.tab_recent = QWidget()
@@ -371,7 +371,7 @@ class SettingsDialog(QDialog):
         recent_layout.addWidget(self.chk_recent_tracking)
         
         recent_limit_layout = QHBoxLayout()
-        recent_limit_label = QLabel("最近使用最大条数:")
+        recent_limit_label = QLabel("最大条数:") # 最近使用最大条数:
         self.spin_recent_limit = QSpinBox()
         self.spin_recent_limit.setRange(1, 999)
         self.spin_recent_limit.setValue(self.current_options.get("recent_max_items", 30))
@@ -383,7 +383,7 @@ class SettingsDialog(QDialog):
         recent_layout.addLayout(recent_limit_layout)
         
         recent_btn_layout = QHBoxLayout()
-        btn_manage_excluded = QPushButton("管理禁止记录...")
+        btn_manage_excluded = QPushButton("禁止记录管理") # 管理禁止记录...
         btn_manage_excluded.setStyleSheet("padding: 6px 14px; background-color: #ef4444; color: white; border-radius: 6px; font-weight: bold;")
         btn_manage_excluded.clicked.connect(self._open_recent_excluded_dialog)
         
@@ -393,21 +393,21 @@ class SettingsDialog(QDialog):
         
         recent_layout.addStretch()
         recent_layout.addLayout(create_restore_btn(self._restore_recent_defaults))
-        self.tabs.addTab(self.tab_recent, "最近使用设置")
+        self.tabs.addTab(self.tab_recent, "最近使用") # 最近使用设置
         
         # --- Tab 5: Hotkeys ---
         self.tab_hotkeys = QWidget()
         hk_layout = QVBoxLayout(self.tab_hotkeys)
         hk_layout.setSpacing(5)
         
-        self.screenshot_row = HotkeyRow("screenshot", "\u7cfb\u7edf\u622a\u5c4f:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
-        self.smart_screenshot_row = HotkeyRow("smart_screenshot", "\u667a\u80fd\u622a\u5c4f:", self.current_hotkeys.get("smart_screenshot", "")) # 智能截屏:
-        self.record_row = HotkeyRow("record", "\u667a\u80fd\u5f55\u5c4f:", self.current_hotkeys.get("record", "")) # 智能录屏:
-        self.search_row = HotkeyRow("search", "\u5feb\u6377\u641c\u7d22:", self.current_hotkeys.get("search", "")) # 快捷搜索:
-        self.notebook_row = HotkeyRow("notebook", "\u663e\u793a/\u9690\u85cf\u8bb0\u4e8b\u672c:", self.current_hotkeys.get("notebook", "")) # 显示/隐藏记事本:
-        self.clipboard_row = HotkeyRow("clipboard", "\u663e\u793a/\u9690\u85cf\u526a\u8d34\u677f:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
+        self.screenshot_row = HotkeyRow("screenshot", "系统截屏:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
+        self.smart_screenshot_row = HotkeyRow("smart_screenshot", "智能截屏:", self.current_hotkeys.get("smart_screenshot", "")) # 智能截屏:
+        self.record_row = HotkeyRow("record", "智能录屏:", self.current_hotkeys.get("record", "")) # 智能录屏:
+        self.search_row = HotkeyRow("search", "快捷搜索:", self.current_hotkeys.get("search", "")) # 快捷搜索:
+        self.notebook_row = HotkeyRow("notebook", "显示/隐藏记事本:", self.current_hotkeys.get("notebook", "")) # 显示/隐藏记事本:
+        self.clipboard_row = HotkeyRow("clipboard", "显示/隐藏剪贴板:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
         self.recent_row = HotkeyRow("recent", "显示/隐藏最近使用:", self.current_hotkeys.get("recent", ""))
-        self.toggle_ball_row = HotkeyRow("toggle_ball", "\u663e\u793a/\u9690\u85cf\u60ac\u6d6e\u7403:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
+        self.toggle_ball_row = HotkeyRow("toggle_ball", "显示/隐藏悬浮球:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
         
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row, self.search_row, 
                     self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row]:
@@ -418,23 +418,23 @@ class SettingsDialog(QDialog):
             
         hk_layout.addStretch()
         hk_layout.addLayout(create_restore_btn(self._restore_hotkey_defaults))
-        self.tabs.addTab(self.tab_hotkeys, "\u5feb\u6377\u952e\u8bbe\u7f6e") # 快捷键设置
+        self.tabs.addTab(self.tab_hotkeys, "快捷键") # 快捷键设置
         
-        # --- Tab 4: Features ---
+        # --- Tab 6: Features ---
         self.tab_features = QWidget()
         feat_main_layout = QHBoxLayout(self.tab_features)
         feat_main_layout.setSpacing(15)
-
+        
         # Left Panel (System Features)
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
         
-        lbl_sys = QLabel("\u7cfb\u7edf\u529f\u80fd") # 系统功能
+        lbl_sys = QLabel("系统功能") # 系统功能
         lbl_sys.setStyleSheet("font-weight: bold; font-size: 14px;")
         
         self.sys_search = QLineEdit()
-        self.sys_search.setPlaceholderText("\u641c\u7d22\u7cfb\u7edf\u529f\u80fd...") # 搜索系统功能...
+        self.sys_search.setPlaceholderText("搜索系统功能...") # 搜索系统功能...
         self.sys_search.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
         self.sys_search.textChanged.connect(self._filter_sys_features)
         
@@ -449,12 +449,12 @@ class SettingsDialog(QDialog):
         self.sys_content_layout.setAlignment(Qt.AlignTop)
         
         self.features_map = [
-            ("enable_clipboard_ball", "\u526a\u8d34\u677f\u5386\u53f2 (📋)"),
-            ("enable_screenshot_ball", "\u7cfb\u7edf\u622a\u56fe (✂️)"),
-            ("enable_notebook_ball", "\u8bb0\u4e8b\u672c (📝)"),
-            ("enable_smart_screenshot_ball", "\u667a\u80fd\u622a\u56fe (🎯)"),
-            ("enable_record_ball", "\u667a\u80fd\u5f55\u5c4f (🎥)"),
-            ("enable_search_ball", "\u5feb\u6377\u641c\u7d22 (🔍)"),
+            ("enable_clipboard_ball", "剪贴板历史 (📋)"),
+            ("enable_screenshot_ball", "系统截屏 (✂️)"),
+            ("enable_notebook_ball", "记事本 (📝)"),
+            ("enable_smart_screenshot_ball", "智能截屏 (🎯)"),
+            ("enable_record_ball", "智能录屏 (🎥)"),
+            ("enable_search_ball", "快捷搜索 (🔍)"),
             ("enable_recent_ball", "最近使用 (🕘)")
         ]
         
@@ -480,11 +480,11 @@ class SettingsDialog(QDialog):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         
-        lbl_custom = QLabel("\u81ea\u5b9a\u4e49\u8f6f\u4ef6\u5feb\u6377\u542f\u52a8") # 自定义软件快捷启动
+        lbl_custom = QLabel("自定义软件快捷启动") # 自定义软件快捷启动
         lbl_custom.setStyleSheet("font-weight: bold; font-size: 14px;")
         
         self.custom_search = QLineEdit()
-        self.custom_search.setPlaceholderText("\u641c\u7d22\u81ea\u5b9a\u4e49\u8f6f\u4ef6...") # 搜索自定义软件...
+        self.custom_search.setPlaceholderText("搜索自定义软件...") # 搜索自定义软件...
         self.custom_search.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
         self.custom_search.textChanged.connect(self._filter_custom_features)
         
@@ -502,7 +502,7 @@ class SettingsDialog(QDialog):
         
         custom_scroll.setWidget(self.custom_content)
         
-        btn_add_app = QPushButton("\u6dfb\u52a0\u65b0\u529f\u80fd") # 添加新功能
+        btn_add_app = QPushButton("添加新功能") # 添加新功能
         btn_add_app.setStyleSheet("padding: 6px 14px; background-color: #3b82f6; color: white; border-radius: 6px; font-weight: bold;")
         btn_add_app.clicked.connect(self._add_custom_app_dialog)
         
@@ -514,7 +514,7 @@ class SettingsDialog(QDialog):
         feat_main_layout.addWidget(left_panel)
         feat_main_layout.addWidget(right_panel)
 
-        self.tabs.addTab(self.tab_features, "\u529f\u80fd\u7ba1\u7406") # 功能管理
+        self.tabs.addTab(self.tab_features, "功能扩展") # 功能管理
         
         main_layout.addWidget(self.tabs)
 
@@ -569,28 +569,28 @@ class SettingsDialog(QDialog):
 
     def _add_custom_app_dialog(self):
         dialog = QDialog(self)
-        dialog.setWindowTitle("\u6dfb\u52a0\u81ea\u5b9a\u4e49\u8f6f\u4ef6") # 添加自定义软件
+        dialog.setWindowTitle("添加快捷启动软件") # 添加自定义软件
         dialog.setFixedSize(400, 180)
         dialog.setStyleSheet("QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }")
         
         layout = QVBoxLayout(dialog)
         
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("\u7a0b\u5e8f\u540d\u79f0:")) # 程序名称:
+        name_layout.addWidget(QLabel("软件名称:")) # 程序名称:
         input_name = QLineEdit()
         input_name.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f8fafc; color: #0f172a;")
         name_layout.addWidget(input_name)
         layout.addLayout(name_layout)
         
         path_layout = QHBoxLayout()
-        path_layout.addWidget(QLabel("\u7a0b\u5e8f\u8def\u5f84:")) # 程序路径:
+        path_layout.addWidget(QLabel("软件路径:")) # 程序路径:
         input_path = QLineEdit()
         input_path.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f8fafc; color: #0f172a;")
-        btn_browse = QPushButton("\u6d4f\u89c8...") # 浏览...
+        btn_browse = QPushButton("浏览...") # 浏览...
         btn_browse.setStyleSheet("padding: 6px 12px; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; color: #0f172a;")
         
         def do_browse():
-            path, _ = QFileDialog.getOpenFileName(dialog, "\u9009\u62e9.exe", "", "Executable Files (*.exe)")
+            path, _ = QFileDialog.getOpenFileName(dialog, "选择软件", "", "Executable Files (*.exe)")
             if path:
                 input_path.setText(path)
                 from PySide6.QtCore import QFileInfo
@@ -605,9 +605,9 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         
         btn_layout = QHBoxLayout()
-        btn_ok = QPushButton("\u786e\u5b9a") # 确定
+        btn_ok = QPushButton("确定") # 确定
         btn_ok.setStyleSheet("padding: 8px 20px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold;")
-        btn_cancel = QPushButton("\u53d6\u6d88") # 取消
+        btn_cancel = QPushButton("取消") # 取消
         btn_cancel.setStyleSheet("padding: 8px 20px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;")
         
         btn_ok.clicked.connect(dialog.accept)
