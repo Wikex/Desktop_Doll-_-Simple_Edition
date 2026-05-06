@@ -261,6 +261,7 @@ class FloatingAssistant:
             self.panel.hide()
             self.notebook_panel.hide()
             self.search_panel.hide()
+            self.recent_panel.hide()
         else:
             # Show all sub balls based on options
             if self.options.get("enable_clipboard_ball", True):
@@ -281,6 +282,9 @@ class FloatingAssistant:
             if self.options.get("enable_search_ball", True):
                 self.search_ball.update_position_from_main()
                 self.search_ball.show()
+            if self.options.get("enable_recent_ball", True):
+                self.recent_ball.update_position_from_main()
+                self.recent_ball.show()
             
             for sb in self.sub_balls:
                 if hasattr(sb, 'custom_app_path'):

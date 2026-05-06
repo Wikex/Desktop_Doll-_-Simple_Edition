@@ -400,7 +400,8 @@ class SettingsDialog(QDialog):
             ("enable_notebook_ball", "\u8bb0\u4e8b\u672c (📝)"),
             ("enable_smart_screenshot_ball", "\u667a\u80fd\u622a\u56fe (🎯)"),
             ("enable_record_ball", "\u667a\u80fd\u5f55\u5c4f (🎥)"),
-            ("enable_search_ball", "\u5feb\u6377\u641c\u7d22 (🔍)")
+            ("enable_search_ball", "\u5feb\u6377\u641c\u7d22 (🔍)"),
+            ("enable_recent_ball", "最近使用 (🕘)")
         ]
         
         self.feat_checkboxes = {}
