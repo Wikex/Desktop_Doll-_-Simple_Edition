@@ -214,28 +214,50 @@ class ClipboardItemWidget(QWidget):
             pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
             self.label = HoverImageLabel(val)
             self.label.setPixmap(pixmap)
-            self.label.setAlignment(Qt.AlignCenter)
             self.label.setStyleSheet("background: transparent;")
-            layout.addWidget(self.label, 1)
+            
+            img_container = QWidget()
+            img_container.setStyleSheet("background: transparent;")
+            img_layout = QHBoxLayout(img_container)
+            img_layout.setContentsMargins(0, 0, 0, 0)
+            img_layout.addStretch()
+            img_layout.addWidget(self.label)
+            img_layout.addStretch()
+            
+            layout.addWidget(img_container, 1)
         else:
             from PySide6.QtGui import QFontMetrics
             self.label = HoverLabel(text)
             self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
             
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
-            lines = display_text.split('\n')
+            display_text = display_text.replace('\n', '  ')
             
             fm = QFontMetrics(self.label.font())
-            max_width = 180
+            max_width = 190
             
-            if len(lines) > 2:
-                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width) + "..."
-            elif len(lines) == 2:
-                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width)
+            if fm.horizontalAdvance(display_text) <= max_width:
+                final_text = display_text
             else:
-                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width * 2)
+                line1 = ""
+                rem = ""
+                for i in range(len(display_text), 0, -1):
+                    if fm.horizontalAdvance(display_text[:i]) <= max_width:
+                        line1 = display_text[:i]
+                        rem = display_text[i:]
+                        break
                 
-            self.label.setText(display_text)
+                if not line1:
+                    line1 = display_text[:1]
+                    rem = display_text[1:]
+                    
+                if fm.horizontalAdvance(rem) <= max_width:
+                    final_text = line1 + "\n" + rem
+                else:
+                    line2 = fm.elidedText(rem, Qt.ElideRight, max_width)
+                    final_text = line1 + "\n" + line2
+                    
+            self.label.setText(final_text)
             layout.addWidget(self.label, 1)
         
     def _on_delete_clicked(self):
