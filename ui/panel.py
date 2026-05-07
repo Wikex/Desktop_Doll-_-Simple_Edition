@@ -124,7 +124,8 @@ class ClipboardItemWidget(QWidget):
         super().__init__(parent)
         self.full_item = full_item
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet("ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }")
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } ClipboardItemWidget:hover { border: 1px solid #3b82f6; }")
         
         self.hover_timer = QTimer(self)
         self.hover_timer.setSingleShot(True)
