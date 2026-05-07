@@ -223,7 +223,7 @@ class RecentPanel(QWidget):
 
     def _on_filter_clicked(self):
         unique_exts = set(item.get("ext", "") for item in self._current_items)
-        dialog = ExtensionFilterDialog(unique_exts, self._visibility_dict, self)
+        dialog = ExtensionFilterDialog(unique_exts, self._visibility_dict)
         if dialog.exec() == ExtensionFilterDialog.Accepted:
             new_dict = dialog.get_visibility_dict()
             self._visibility_dict = new_dict

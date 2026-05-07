@@ -17,6 +17,7 @@ class ScreenshotMask(QWidget):
         super().__init__()
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setWindowModality(Qt.ApplicationModal)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
