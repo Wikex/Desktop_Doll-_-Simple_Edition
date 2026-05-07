@@ -162,6 +162,15 @@ class RecentManager(QObject):
             self._save_history()
             self.items_changed.emit(self.history)
 
+    def remove_item(self, item_to_remove):
+        path = item_to_remove.get("path") if isinstance(item_to_remove, dict) else str(item_to_remove)
+        for i, item in enumerate(self.history):
+            if item.get("path") == path:
+                self.history.pop(i)
+                self._save_history()
+                self.items_changed.emit(self.history)
+                break
+
     def set_history(self, new_history):
         self.history = new_history
         self._save_history()

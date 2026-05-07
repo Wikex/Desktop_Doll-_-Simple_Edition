@@ -29,13 +29,27 @@ class RecentListWidget(QListWidget):
             self.item_right_clicked.emit(item)
 
 class RecentItemWidget(QWidget):
+    deleted = Signal(object)
+
     def __init__(self, item_data, parent=None):
         super().__init__(parent)
+        self.item_data = item_data
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet("RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }")
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } RecentItemWidget:hover { border: 1px solid #3b82f6; }")
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
+        
+        self.btn_delete = QPushButton("✖")
+        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setStyleSheet("""
+            QPushButton { border-radius: 12px; background-color: #ff4c4c; color: white; font-weight: bold; font-size: 12px; }
+            QPushButton:hover { background-color: #ff0000; }
+        """)
+        self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.clicked.connect(self._on_delete_clicked)
+        layout.addWidget(self.btn_delete)
         
         from PySide6.QtWidgets import QFileIconProvider
         from PySide6.QtCore import QFileInfo
@@ -63,9 +77,9 @@ class RecentItemWidget(QWidget):
         name_fm = QFontMetrics(name_label.font())
         path_fm = QFontMetrics(path_label.font())
         
-        # Max width 230 is safe because there are no action buttons, just the icon (24px) + layout margins
-        elided_name = name_fm.elidedText(name, Qt.ElideRight, 230)
-        elided_path = path_fm.elidedText(path, Qt.ElideRight, 230)
+        # Max width 190 to account for delete button and icon
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 190)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 190)
         
         name_label.setText(elided_name)
         path_label.setText(elided_path)
@@ -75,9 +89,13 @@ class RecentItemWidget(QWidget):
         
         layout.addLayout(text_layout, 1)
 
+    def _on_delete_clicked(self):
+        self.deleted.emit(self.item_data)
+
 class RecentPanel(QWidget):
     item_clicked = Signal(object)
     item_right_clicked = Signal(object)
+    item_deleted = Signal(object)
     toggle_tracking_clicked = Signal()
     excluded_extensions_changed = Signal(list)
     visibility_dict_changed = Signal(dict)
@@ -239,6 +257,7 @@ class RecentPanel(QWidget):
             self.list_widget.addItem(list_item)
             
             widget = RecentItemWidget(item_data)
+            widget.deleted.connect(self.item_deleted.emit)
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
             

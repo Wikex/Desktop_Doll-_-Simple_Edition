@@ -185,6 +185,7 @@ class FloatingAssistant:
         self.recent_mgr.items_changed.connect(self.recent_panel.update_items)
         self.recent_panel.item_clicked.connect(self.recent_mgr.open_item)
         self.recent_panel.item_right_clicked.connect(self.recent_mgr.open_item_location)
+        self.recent_panel.item_deleted.connect(self.recent_mgr.remove_item)
         self.recent_panel.toggle_tracking_clicked.connect(self.toggle_recent_tracking)
         self.recent_panel.excluded_extensions_changed.connect(self._on_recent_excluded_extensions_changed)
         self.recent_panel.visibility_dict_changed.connect(self._on_recent_visibility_dict_changed)
