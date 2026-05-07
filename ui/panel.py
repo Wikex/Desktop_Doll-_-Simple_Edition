@@ -1,12 +1,51 @@
 import sys
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
-                                QApplication, QLabel, QListWidgetItem, QPushButton, 
-                                QAbstractItemView, QMessageBox, QDialog, QPlainTextEdit, QScrollArea)
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint
-from PySide6.QtGui import QMouseEvent, QPixmap, QImage
-import base64
+                               QApplication, QLabel, QListWidgetItem, QPushButton, 
+                               QAbstractItemView, QMessageBox, QDialog, QPlainTextEdit, QScrollArea, QToolTip)
 
+class HoverLabel(QLabel):
+    def __init__(self, full_text, parent=None):
+        super().__init__(parent)
+        self.full_text = full_text
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(3000)
+        self.hover_timer.timeout.connect(self.show_hover_effect)
 
+    def enterEvent(self, event):
+        self.hover_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_timer.stop()
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def show_hover_effect(self):
+        from PySide6.QtGui import QCursor
+        QToolTip.showText(QCursor.pos(), self.full_text, self)
+
+class HoverImageLabel(QLabel):
+    def __init__(self, full_path, parent=None):
+        super().__init__(parent)
+        self.full_path = full_path
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(3000)
+        self.hover_timer.timeout.connect(self.show_hover_effect)
+
+    def enterEvent(self, event):
+        self.hover_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_timer.stop()
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def show_hover_effect(self):
+        from PySide6.QtGui import QCursor
+        QToolTip.showText(QCursor.pos(), f"图片路径: {self.full_path}", self)
 
 class PinnedImageDialog(QWidget):
     def __init__(self, pixmap, item_data=None, parent=None):
@@ -167,18 +206,31 @@ class ClipboardItemWidget(QWidget):
             pixmap = QPixmap.fromImage(image)
             # 缩放至最大高度 60 像素，保持比例
             pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
-            self.label = QLabel()
+            self.label = HoverImageLabel(val)
             self.label.setPixmap(pixmap)
+            self.label.setAlignment(Qt.AlignCenter)
             self.label.setStyleSheet("background: transparent;")
             layout.addWidget(self.label, 1)
         else:
             from PySide6.QtGui import QFontMetrics
-            self.label = QLabel()
+            self.label = HoverLabel(text)
+            self.label.setWordWrap(True)
             self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
+            
+            display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
+            lines = display_text.split('\n')
+            
             fm = QFontMetrics(self.label.font())
-            elided_text = fm.elidedText(text, Qt.ElideRight, 240)
-            self.label.setText(elided_text)
-            self.label.setToolTip(text)
+            max_width = 230
+            
+            if len(lines) > 2:
+                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width) + "..."
+            elif len(lines) == 2:
+                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width)
+            else:
+                display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width * 2)
+                
+            self.label.setText(display_text)
             layout.addWidget(self.label, 1)
         
     def _on_delete_clicked(self):
@@ -436,8 +488,7 @@ class Panel(QWidget):
                 preview = "[图片]"
             else:
                 text = item_data.get("value", "") if isinstance(item_data, dict) else str(item_data)
-                preview = text.replace('\n', ' ').replace('\r', '')
-                if len(preview) > 50: preview = preview[:50] + "..."
+                preview = text
                 
             list_item = QListWidgetItem()
             list_item.setData(Qt.UserRole, item_data)
