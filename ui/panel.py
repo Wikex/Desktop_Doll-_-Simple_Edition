@@ -220,14 +220,13 @@ class ClipboardItemWidget(QWidget):
         else:
             from PySide6.QtGui import QFontMetrics
             self.label = HoverLabel(text)
-            self.label.setWordWrap(True)
             self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
             
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
             lines = display_text.split('\n')
             
             fm = QFontMetrics(self.label.font())
-            max_width = 190
+            max_width = 180
             
             if len(lines) > 2:
                 display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width) + "..."

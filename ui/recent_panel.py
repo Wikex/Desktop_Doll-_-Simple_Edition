@@ -31,6 +31,9 @@ class RecentListWidget(QListWidget):
 class RecentItemWidget(QWidget):
     def __init__(self, item_data, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }")
+        
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
@@ -60,8 +63,9 @@ class RecentItemWidget(QWidget):
         name_fm = QFontMetrics(name_label.font())
         path_fm = QFontMetrics(path_label.font())
         
-        elided_name = name_fm.elidedText(name, Qt.ElideRight, 250)
-        elided_path = path_fm.elidedText(path, Qt.ElideRight, 250)
+        # Max width 230 is safe because there are no action buttons, just the icon (24px) + layout margins
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 230)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 230)
         
         name_label.setText(elided_name)
         path_label.setText(elided_path)
@@ -116,7 +120,7 @@ class RecentPanel(QWidget):
         self.setWindowTitle("最近使用")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
         self.setFixedSize(320, 420)
-        self.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; color: #000000;")
+        self.setStyleSheet("RecentPanel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QWidget { color: #000000; }")
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
