@@ -128,7 +128,7 @@ class ClipboardItemWidget(QWidget):
         
         self.hover_timer = QTimer(self)
         self.hover_timer.setSingleShot(True)
-        self.hover_timer.setInterval(3000)
+        self.hover_timer.setInterval(1000)
         self.hover_timer.timeout.connect(self.show_hover_effect)
         self.full_tooltip_text = ""
         
