@@ -215,7 +215,7 @@ class RecentPanel(QWidget):
         self._apply_filter()
 
     def _on_excluded_clicked(self):
-        dialog = ExcludedExtensionsDialog(self._excluded_extensions, self)
+        dialog = ExcludedExtensionsDialog(self._excluded_extensions)
         if dialog.exec() == ExcludedExtensionsDialog.Accepted:
             new_exts = dialog.get_excluded_extensions()
             self._excluded_extensions = new_exts

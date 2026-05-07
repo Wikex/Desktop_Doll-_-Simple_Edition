@@ -6,6 +6,7 @@ class ExcludedExtensionsDialog(QDialog):
     def __init__(self, excluded_extensions, parent=None):
         super().__init__(parent)
         self.setWindowTitle("排除记录")
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
         self.setFixedSize(320, 400)
         self.setStyleSheet("QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }")
         
