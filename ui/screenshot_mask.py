@@ -99,27 +99,30 @@ class ScreenshotMask(QWidget):
     def find_best_rect(self, global_pos):
         physical_pos = self._logical_point_to_physical(global_pos)
         screen_area = self.total_geometry.width() * self.total_geometry.height()
-        best_rect = None
-        min_area = float('inf')
-
+        
+        uia_rect = None
         try:
-            uia_rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
-            if uia_rect:
-                area = uia_rect.width() * uia_rect.height()
+            rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
+            if rect:
+                area = rect.width() * rect.height()
                 if 20 < area < screen_area * 0.95:
-                    best_rect = uia_rect
-                    min_area = area
+                    uia_rect = rect
         except Exception:
             pass
 
+        ew_rect = None
         for rect in self.all_rects_global:
             if rect.contains(physical_pos):
-                area = rect.width() * rect.height()
-                if 20 < area < min_area:
-                    min_area = area
-                    best_rect = rect
+                if rect.width() * rect.height() > 20:
+                    ew_rect = rect
+                    break
 
-        return best_rect
+        if uia_rect and ew_rect:
+            if (ew_rect.width() * ew_rect.height()) < (uia_rect.width() * uia_rect.height()):
+                return ew_rect
+            return uia_rect
+            
+        return uia_rect or ew_rect
 
     def paintEvent(self, event):
         painter = QPainter(self)
