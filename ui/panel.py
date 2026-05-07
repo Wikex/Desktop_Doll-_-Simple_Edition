@@ -167,6 +167,9 @@ class ClipboardItemWidget(QWidget):
     def __init__(self, text, full_item, parent=None):
         super().__init__(parent)
         self.full_item = full_item
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet("ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }")
+        
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
@@ -224,7 +227,7 @@ class ClipboardItemWidget(QWidget):
             lines = display_text.split('\n')
             
             fm = QFontMetrics(self.label.font())
-            max_width = 230
+            max_width = 190
             
             if len(lines) > 2:
                 display_text = fm.elidedText(lines[0], Qt.ElideRight, max_width) + "\n" + fm.elidedText(lines[1], Qt.ElideRight, max_width) + "..."
@@ -308,7 +311,7 @@ class Panel(QWidget):
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
         self.setFixedSize(320, 420)
-        self.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; color: #000000;")
+        self.setStyleSheet("Panel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QWidget { color: #000000; }")
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
