@@ -2,6 +2,9 @@ import sys
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                                QApplication, QLabel, QListWidgetItem, QPushButton, 
                                QAbstractItemView, QMessageBox, QDialog, QPlainTextEdit, QScrollArea, QToolTip)
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint
+from PySide6.QtGui import QMouseEvent, QPixmap, QImage
+import base64
 
 class HoverLabel(QLabel):
     def __init__(self, full_text, parent=None):
