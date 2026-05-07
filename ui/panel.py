@@ -6,50 +6,6 @@ from PySide6.QtCore import Qt, Signal, QTimer, QPoint
 from PySide6.QtGui import QMouseEvent, QPixmap, QImage
 import base64
 
-class HoverLabel(QLabel):
-    def __init__(self, full_text, parent=None):
-        super().__init__(parent)
-        self.full_text = full_text
-        self.hover_timer = QTimer(self)
-        self.hover_timer.setSingleShot(True)
-        self.hover_timer.setInterval(3000)
-        self.hover_timer.timeout.connect(self.show_hover_effect)
-
-    def enterEvent(self, event):
-        self.hover_timer.start()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.hover_timer.stop()
-        QToolTip.hideText()
-        super().leaveEvent(event)
-
-    def show_hover_effect(self):
-        from PySide6.QtGui import QCursor
-        QToolTip.showText(QCursor.pos(), self.full_text, self)
-
-class HoverImageLabel(QLabel):
-    def __init__(self, full_path, parent=None):
-        super().__init__(parent)
-        self.full_path = full_path
-        self.hover_timer = QTimer(self)
-        self.hover_timer.setSingleShot(True)
-        self.hover_timer.setInterval(3000)
-        self.hover_timer.timeout.connect(self.show_hover_effect)
-
-    def enterEvent(self, event):
-        self.hover_timer.start()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self.hover_timer.stop()
-        QToolTip.hideText()
-        super().leaveEvent(event)
-
-    def show_hover_effect(self):
-        from PySide6.QtGui import QCursor
-        QToolTip.showText(QCursor.pos(), f"图片路径: {self.full_path}", self)
-
 class PinnedImageDialog(QWidget):
     def __init__(self, pixmap, item_data=None, parent=None):
         super().__init__(parent)
@@ -170,6 +126,12 @@ class ClipboardItemWidget(QWidget):
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setStyleSheet("ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; }")
         
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(3000)
+        self.hover_timer.timeout.connect(self.show_hover_effect)
+        self.full_tooltip_text = ""
+        
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
@@ -212,7 +174,8 @@ class ClipboardItemWidget(QWidget):
             pixmap = QPixmap.fromImage(image)
             # 缩放至最大高度 60 像素，保持比例
             pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
-            self.label = HoverImageLabel(val)
+            self.label = QLabel()
+            self.full_tooltip_text = f"图片路径: {val}"
             self.label.setPixmap(pixmap)
             self.label.setStyleSheet("background: transparent;")
             
@@ -227,7 +190,8 @@ class ClipboardItemWidget(QWidget):
             layout.addWidget(img_container, 1)
         else:
             from PySide6.QtGui import QFontMetrics
-            self.label = HoverLabel(text)
+            self.label = QLabel()
+            self.full_tooltip_text = text
             self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
             
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
@@ -265,6 +229,21 @@ class ClipboardItemWidget(QWidget):
         
     def _on_view_clicked(self):
         self.viewed.emit(self.full_item)
+
+    def enterEvent(self, event):
+        self.hover_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_timer.stop()
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def show_hover_effect(self):
+        if not self.full_tooltip_text:
+            return
+        from PySide6.QtGui import QCursor
+        QToolTip.showText(QCursor.pos(), self.full_tooltip_text, self)
 
 class ClipboardListWidget(QListWidget):
     order_changed = Signal(list)
