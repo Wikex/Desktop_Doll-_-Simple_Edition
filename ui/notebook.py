@@ -26,6 +26,7 @@ class NotebookPanel(QWidget):
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self._has_been_dragged = True
             self.move(event.globalPos() - self._drag_start_pos)
             if self._main_ball:
                 self._relative_offset = (self.x() - self._main_ball.x(), self.y() - self._main_ball.y())
@@ -107,8 +108,10 @@ class NotebookPanel(QWidget):
         self.text_edit.blockSignals(False)
 
     def update_position(self, ball_x, ball_y):
+        if getattr(self, '_has_been_dragged', False):
+            return
+            
         if self._relative_offset is None:
-            # Default to the left of the ball
             self._relative_offset = (-310, -200)
         
         new_x = ball_x + self._relative_offset[0]

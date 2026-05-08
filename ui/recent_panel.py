@@ -215,6 +215,7 @@ class RecentPanel(QWidget):
 
     def mouseMoveEvent(self, event):
         if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self._has_been_dragged = True
             self.move(event.globalPos() - self._drag_start_pos)
             if self._main_ball:
                 self._relative_offset = (self.x() - self._main_ball.x(), self.y() - self._main_ball.y())
@@ -366,6 +367,9 @@ class RecentPanel(QWidget):
         QTimer.singleShot(10, lambda: self.item_right_clicked.emit(full_item))
 
     def update_position(self, ball_x, ball_y):
+        if getattr(self, '_has_been_dragged', False):
+            return
+            
         if self._relative_offset is None:
             self._relative_offset = (-310, -200)
         
