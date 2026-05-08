@@ -117,11 +117,25 @@ class ScreenshotMask(QWidget):
                     ew_rect = rect
                     break
 
+        try:
+            with open("screenshot_debug.log", "a") as f:
+                f.write(f"Mouse: {physical_pos.x()}, {physical_pos.y()} | UIA: {uia_rect} | EW: {ew_rect}\n")
+                if ew_rect is None:
+                    f.write("All rects available:\n")
+                    for r in self.all_rects_global:
+                        f.write(f"  {r.x()}, {r.y()}, {r.width()}x{r.height()}\n")
+        except:
+            pass
+
         if uia_rect and ew_rect:
+            self.last_uia_rect = uia_rect
+            self.last_ew_rect = ew_rect
             if (ew_rect.width() * ew_rect.height()) < (uia_rect.width() * uia_rect.height()):
                 return ew_rect
             return uia_rect
             
+        self.last_uia_rect = uia_rect
+        self.last_ew_rect = ew_rect
         return uia_rect or ew_rect
 
     def paintEvent(self, event):
@@ -172,6 +186,17 @@ class ScreenshotMask(QWidget):
         if local_drag_rect:
             painter.setPen(QPen(QColor(0, 120, 215), 2))
             painter.drawRect(local_drag_rect)
+
+        # Debug info
+        painter.setPen(QPen(QColor(255, 255, 255), 1))
+        debug_text = f"Pos: {self.current_pos_global.x() if self.current_pos_global else 0}, {self.current_pos_global.y() if self.current_pos_global else 0}"
+        if getattr(self, 'last_uia_rect', None):
+            debug_text += f" | UIA: {self.last_uia_rect.width()}x{self.last_uia_rect.height()}"
+        if getattr(self, 'last_ew_rect', None):
+            debug_text += f" | EW: {self.last_ew_rect.width()}x{self.last_ew_rect.height()}"
+        
+        if self.current_pos_global:
+            painter.drawText(self.current_pos_global.x() - offset.x() + 15, self.current_pos_global.y() - offset.y() + 15, debug_text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
