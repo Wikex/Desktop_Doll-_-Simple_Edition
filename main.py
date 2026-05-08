@@ -549,6 +549,9 @@ class FloatingAssistant:
             if self.options.get("enable_search_ball", True):
                 self.search_ball.reset_position()
                 self.search_ball.show()
+            if self.options.get("enable_recent_ball", True):
+                self.recent_ball.reset_position()
+                self.recent_ball.show()
 
             for sb in self.sub_balls:
                 if hasattr(sb, 'custom_app_path'):
