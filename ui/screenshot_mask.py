@@ -104,7 +104,10 @@ class ScreenshotMask(QDialog):
         )
 
     def find_best_rect(self, global_pos):
-        physical_pos = self._logical_point_to_physical(global_pos)
+        import win32gui
+        phys_x, phys_y = win32gui.GetCursorPos()
+        physical_pos = QPoint(phys_x, phys_y)
+        
         screen_area = self.total_geometry.width() * self.total_geometry.height()
         
         uia_rect = None
@@ -123,15 +126,6 @@ class ScreenshotMask(QDialog):
                 if rect.width() * rect.height() > 20:
                     ew_rect = rect
                     break
-
-        try:
-            with open("screenshot_debug.log", "a") as f:
-                f.write(f"Mouse: {physical_pos.x()}, {physical_pos.y()} | UIA: {uia_rect} | EW: {ew_rect}\n")
-                f.write("All rects available:\n")
-                for i, r in enumerate(self.all_rects_global[:10]):
-                    f.write(f"  {i}: {r.x()}, {r.y()}, {r.width()}x{r.height()}\n")
-        except:
-            pass
 
         if uia_rect and ew_rect:
             self.last_uia_rect = uia_rect
