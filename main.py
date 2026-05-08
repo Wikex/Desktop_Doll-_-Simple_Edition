@@ -417,7 +417,7 @@ class FloatingAssistant:
             self.screenshot_mask = ScreenshotMask(mode="record")
             self.screenshot_mask.rect_selected.connect(self._on_record_rect_selected)
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
-            self.screenshot_mask.show()
+            self.screenshot_mask.exec()
             
     def _on_record_rect_selected(self, rect):
         self._restore_balls_after_screenshot()
@@ -508,7 +508,7 @@ class FloatingAssistant:
                 virtual_screen_top=virtual_top,
             )
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
-            self.screenshot_mask.show()
+            self.screenshot_mask.exec()
 
         QTimer.singleShot(0, start_mask)
         

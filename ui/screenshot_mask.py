@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QApplication
+from PySide6.QtWidgets import QWidget, QApplication, QDialog
 from PySide6.QtCore import Qt, QRect, QPoint, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap
 from core.screenshot import get_all_visible_rects, get_uia_rect_at
@@ -8,7 +8,7 @@ import win32api
 import win32con
 
 
-class ScreenshotMask(QWidget):
+class ScreenshotMask(QDialog):
     finished = Signal()
     rect_selected = Signal(object)
 
@@ -283,9 +283,8 @@ class ScreenshotMask(QWidget):
             print(f"Capture failed: {e}")
         finally:
             self.finished.emit()
-            self.close()
+            self.accept()
 
     def close_mask(self):
         self.finished.emit()
-        self.close()
-        self.deleteLater()
+        self.reject()
