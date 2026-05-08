@@ -119,6 +119,12 @@ class ClipboardManager(QObject):
 
     def _process_clipboard(self):
         mime_data = self._clipboard.mimeData()
+        
+        # Ignore format painter from Office/WPS to prevent junk data from being recorded
+        formats = mime_data.formats()
+        if any("formatpainter" in f.lower() for f in formats):
+            return
+            
         if mime_data.hasUrls():
             # Windows Explorer file copy often exposes file URLs and may also
             # include the file path as text. Ignore these payloads entirely so
