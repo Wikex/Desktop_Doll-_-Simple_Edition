@@ -649,19 +649,6 @@ class SettingsDialog(QDialog):
             
         path = QFileDialog.getExistingDirectory(self, "\u9009\u62e9\u56fe\u7247\u4fdd\u5b58\u6587\u4ef6\u5939", self.pic_path_input.text())
         if path:
-            if os.path.normpath(path) != os.path.normpath(old_path):
-                if os.path.exists(old_path) and os.path.isdir(old_path) and os.listdir(old_path):
-                    reply = QMessageBox.question(self, "\u6e05\u7406\u65e7\u76ee\u5f55", f"\u662f\u5426\u5220\u9664\u65e7\u76ee\u5f55\u4e0b\u7684\u6240\u6709\u6587\u4ef6\uff1f\n({old_path})", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    if reply == QMessageBox.Yes:
-                        for filename in os.listdir(old_path):
-                            filepath = os.path.join(old_path, filename)
-                            try:
-                                if os.path.isfile(filepath):
-                                    os.remove(filepath)
-                                elif os.path.isdir(filepath):
-                                    shutil.rmtree(filepath)
-                            except Exception:
-                                pass
             self.pic_path_input.setText(path)
             self.current_options["picture_save_path"] = path
             self._auto_save_options()
@@ -676,19 +663,6 @@ class SettingsDialog(QDialog):
             
         path = QFileDialog.getExistingDirectory(self, "\u9009\u62e9\u5f55\u5c4f\u4fdd\u5b58\u6587\u4ef6\u5939", self.video_path_input.text())
         if path:
-            if os.path.normpath(path) != os.path.normpath(old_path):
-                if os.path.exists(old_path) and os.path.isdir(old_path) and os.listdir(old_path):
-                    reply = QMessageBox.question(self, "\u6e05\u7406\u65e7\u76ee\u5f55", f"\u662f\u5426\u5220\u9664\u65e7\u76ee\u5f55\u4e0b\u7684\u6240\u6709\u6587\u4ef6\uff1f\n({old_path})", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                    if reply == QMessageBox.Yes:
-                        for filename in os.listdir(old_path):
-                            filepath = os.path.join(old_path, filename)
-                            try:
-                                if os.path.isfile(filepath):
-                                    os.remove(filepath)
-                                elif os.path.isdir(filepath):
-                                    shutil.rmtree(filepath)
-                            except Exception:
-                                pass
             self.video_path_input.setText(path)
             self.current_options["video_save_path"] = path
             self._auto_save_options()

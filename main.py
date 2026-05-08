@@ -135,10 +135,20 @@ class FloatingAssistant:
         self.panel = Panel()
         self.is_recording = False
         self.video_save_path = self.options.get("video_save_path", "")
+        import os
+        if self.video_save_path and not os.path.exists(self.video_save_path):
+            self.video_save_path = ""
+            
         if not self.video_save_path:
-            import os
             self.video_save_path = os.path.join(get_base_dir(), "video")
             self.options["video_save_path"] = self.video_save_path
+            save_option("video_save_path", self.video_save_path)
+            
+        if not os.path.exists(self.video_save_path):
+            try:
+                os.makedirs(self.video_save_path)
+            except:
+                pass
         
         self.notebook_panel.set_main_ball(self.ball)
         self.recent_panel.set_main_ball(self.ball)
@@ -230,10 +240,21 @@ class FloatingAssistant:
         
         # Apply picture path
         pic_path = self.options.get("picture_save_path", "")
+        import os
+        if pic_path and not os.path.exists(pic_path):
+            pic_path = ""
+            
         if not pic_path:
-            import os
             pic_path = os.path.join(get_base_dir(), "picture")
             self.options["picture_save_path"] = pic_path
+            save_option("picture_save_path", pic_path)
+            
+        if not os.path.exists(pic_path):
+            try:
+                os.makedirs(pic_path)
+            except:
+                pass
+                
         self.clipboard_mgr.picture_save_path = pic_path
         
         self.clipboard_mgr.tracking_enabled = self.options.get("clipboard_tracking_enabled", True)
