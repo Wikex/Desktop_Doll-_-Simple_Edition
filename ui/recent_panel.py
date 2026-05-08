@@ -13,9 +13,29 @@ class RecentListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def mimeData(self, items):
+        mime_data = super().mimeData(items)
+        from PySide6.QtCore import QUrl
+        urls = []
+        for item in items:
+            item_data = item.data(Qt.UserRole)
+            if isinstance(item_data, dict):
+                path = item_data.get("path", "")
+                if path and os.path.exists(path):
+                    urls.append(QUrl.fromLocalFile(path))
+        if urls:
+            mime_data.setUrls(urls)
+        return mime_data
+
+    def dragEnterEvent(self, event):
+        if event.source() is self:
+            super().dragEnterEvent(event)
+        else:
+            event.ignore()
 
     def dropEvent(self, event):
         super().dropEvent(event)
