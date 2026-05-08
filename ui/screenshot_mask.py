@@ -40,6 +40,13 @@ class ScreenshotMask(QWidget):
         self.raise_()
         self.activateWindow()
         self.setFocus(Qt.ActiveWindowFocusReason)
+        self.grabMouse()
+        self.grabKeyboard()
+
+    def hideEvent(self, event):
+        self.releaseMouse()
+        self.releaseKeyboard()
+        super().hideEvent(event)
 
     def _get_total_geometry(self):
         total_rect = QRect()
