@@ -432,7 +432,6 @@ class Panel(QWidget):
                 break
                 
         msg_box = QMessageBox(self)
-        msg_box.setStyleSheet("QMessageBox { background-color: #ffffff; color: #000000; } QLabel { color: #000000; } QPushButton { color: #000000; padding: 6px 12px; }")
         
         if has_text and has_image:
             msg_box.setWindowTitle("清空选项")

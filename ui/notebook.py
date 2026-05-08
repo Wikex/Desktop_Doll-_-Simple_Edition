@@ -95,9 +95,6 @@ class NotebookPanel(QWidget):
 
     def _on_clear_clicked(self):
         msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("确认")
-        msg_box.setText("确定要清空记事本吗？")
-        msg_box.setStyleSheet("QMessageBox { background-color: #ffffff; color: #000000; } QLabel { color: #000000; } QPushButton { color: #000000; }")
         btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
         msg_box.addButton("否", QMessageBox.NoRole)
         msg_box.exec()

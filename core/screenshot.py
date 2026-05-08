@@ -91,6 +91,15 @@ def get_all_visible_rects():
             unique_rects.append(r)
             seen.add(t)
             
+    try:
+        import logging
+        logging.basicConfig(filename='screenshot_debug.log', level=logging.DEBUG)
+        logging.debug("--- get_all_visible_rects called ---")
+        for r in unique_rects:
+            logging.debug(f"Rect: {r.x()}, {r.y()}, {r.width()}x{r.height()}")
+    except Exception:
+        pass
+            
     return unique_rects
 
 def get_uia_rect_at(x, y):

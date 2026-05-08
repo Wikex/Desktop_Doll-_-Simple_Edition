@@ -57,6 +57,14 @@ class FloatingAssistant:
         self.app.setApplicationName("\u684c\u9762\u4eba\u5076") # ????
         self.app.setApplicationDisplayName("\u684c\u9762\u4eba\u5076") # ????
         
+        # 强制设置全局的 QMessageBox 样式，防止在某些系统的深色模式下出现白底白字的问题
+        self.app.setStyleSheet("""
+            QMessageBox { background-color: #ffffff; }
+            QMessageBox QLabel { color: #000000; font-size: 13px; }
+            QMessageBox QPushButton { color: #000000; background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 16px; border-radius: 4px; }
+            QMessageBox QPushButton:hover { background-color: #e2e8f0; }
+        """)
+        
         try:
             import ctypes
             myappid = 'shuwe.desktop.assistant.1.0' # arbitrary string

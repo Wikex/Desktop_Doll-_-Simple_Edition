@@ -120,10 +120,9 @@ class ScreenshotMask(QWidget):
         try:
             with open("screenshot_debug.log", "a") as f:
                 f.write(f"Mouse: {physical_pos.x()}, {physical_pos.y()} | UIA: {uia_rect} | EW: {ew_rect}\n")
-                if ew_rect is None:
-                    f.write("All rects available:\n")
-                    for r in self.all_rects_global:
-                        f.write(f"  {r.x()}, {r.y()}, {r.width()}x{r.height()}\n")
+                f.write("All rects available:\n")
+                for i, r in enumerate(self.all_rects_global[:10]):
+                    f.write(f"  {i}: {r.x()}, {r.y()}, {r.width()}x{r.height()}\n")
         except:
             pass
 

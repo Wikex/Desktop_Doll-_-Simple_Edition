@@ -232,10 +232,13 @@ class RecentPanel(QWidget):
 
     def _on_clear_clicked(self):
         from PySide6.QtWidgets import QMessageBox
-        reply = QMessageBox.question(self, "确认清空", 
-            "确定要清空所有的最近使用记录吗？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("确认清空")
+        msg_box.setText("确定要清空所有的最近使用记录吗？")
+        btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
+        btn_no = msg_box.addButton("否", QMessageBox.NoRole)
+        msg_box.exec()
+        if msg_box.clickedButton() == btn_yes:
             self.history_cleared.emit()
 
     def update_items(self, items):

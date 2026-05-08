@@ -1,0 +1,2982 @@
+id,name,filePath,startLine,endLine,isExported,content,description
+"Class:main.py:FloatingAssistant","FloatingAssistant","main.py",51,774,true,"from PySide6.QtGui import QColor
+
+class FloatingAssistant:
+    def __init__(self):
+        self.app = QApplication(sys.argv)
+        
+        # Set Application Name for Task Manager / Windows Grouping
+        self.app.setApplicationName(""\u684c\u9762\u4eba\u5076"") # ????
+        self.app.setApplicationDisplayName(""\u684c\u9762\u4eba\u5076"") # ????
+        
+        try:
+            import ctypes
+            myappid = 'shuwe.desktop.assistant.1.0' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception:
+            pass
+        
+        # Don't quit when last window is closed (important for tray/background apps)
+        self.app.setQuitOnLastWindowClosed(False)
+
+        import os
+        from PySide6.QtGui import QIcon
+        icon_path = os.path.join(get_base_dir(), ""app_icon.ico"")
+        if os.path.exists(icon_path):
+            self.app.setWindowIcon(QIcon(icon_path))
+
+        # Initialize UI
+        self.ball = FloatingBall()
+        self.tray = TrayIcon()
+        self.clipboard_mgr = ClipboardManager(max_items=20)
+        self.hotkey_mgr = HotkeyManager(load_hotkeys())
+        self.options = load_options()
+
+        # Sub Balls
+        self.sub_balls = []
+        
+        self.clipboard_ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=""\u526a\u8d34\u677f\u5386\u53f2"", bg_color=QColor(255, 165, 0, 230))
+        self.sub_balls.append(self.clipboard_ball)
+
+        self.screenshot_ball = SubBall(self.ball, text=""✂️"", radius=80, angle=0, tooltip=""\u7cfb\u7edf\u622a\u56fe"", bg_color=QColor(50, 200, 50, 230))
+        self.sub_balls.append(self.screenshot_ball)
+
+        self.notebook_ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=""\u8bb0\u4e8b\u672c"", bg_color=QColor(50, 150, 250, 230))
+        self.sub_balls.append(self.notebook_ball)
+
+        self.smart_screenshot_ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=""\u667a\u80fd\u622a\u56fe"", bg_color=QColor(255, 69, 0, 230))
+        self.sub_balls.append(self.smart_screenshot_ball)
+
+        self.record_ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=""\u5f55\u5c4f"", bg_color=QColor(255, 0, 0, 230))
+        self.sub_balls.append(self.record_ball)
+
+        self.search_ball = SubBall(self.ball, text=""\U0001f50d"", radius=80, angle=0, tooltip=""\u641c\u7d22"", bg_color=QColor(156, 39, 176, 230))
+        self.sub_balls.append(self.search_ball)
+
+        self.recent_ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=""最近使用"", bg_color=QColor(0, 150, 136, 230))
+        self.sub_balls.append(self.recent_ball)
+
+        # --- Load custom apps ---
+        custom_apps = self.options.get(""custom_apps"", [])
+        from PySide6.QtWidgets import QFileIconProvider
+        from PySide6.QtCore import QFileInfo
+        for app in custom_apps:
+            if not app.get('enabled', True):
+                continue
+            icon = QFileIconProvider().icon(QFileInfo(app[""path""]))
+            ball = SubBall(self.ball, text="""", radius=80, angle=0, tooltip=app[""name""], bg_color=QColor(100, 100, 100, 230), icon=icon)
+            ball.custom_app_path = app[""path""]
+            ball.clicked.connect(lambda p=app[""path""]: os.startfile(p) if hasattr(os, ""startfile"") else None)
+            self.sub_balls.append(ball)
+            
+        # Assign angles and radii (concentric layout)
+        self._update_balls_layout()
+            
+        self.notebook_mgr = NotebookManager()
+        self.notebook_panel = NotebookPanel()
+        self.recent_mgr = RecentManager()
+        self.recent_panel = RecentPanel()
+        self.panel = Panel()
+        self.is_recording = False
+        self.video_save_path = self.options.get(""video_save_path"", """")
+        if not self.video_save_path:
+            import os
+            self.video_save_path = os.path.join(get_base_dir(), ""video"")
+            self.options[""video_save_path""] = self.video_save_path
+        
+        self.notebook_panel.set_main_ball(self.ball)
+        self.recent_panel.set_main_ball(self.ball)
+        self.search_panel = SearchBoxPanel()
+        self.search_panel.set_main_ball(self.ball)
+        self.search_panel.search_requested.connect(self.perform_web_search)
+        self.notebook_panel.set_content(self.notebook_mgr.content)
+        
+        self.settings_dialog = None
+
+        # Connections - Main Ball
+        self.ball.clicked.connect(self.toggle_sub_balls)
+        self.ball.right_clicked.connect(self.show_ball_menu)
+        self.ball.position_changed.connect(self.on_ball_moved)
+        
+        # Connections - Sub Ball
+        self.clipboard_ball.clicked.connect(self.on_clipboard_ball_clicked)
+        self.clipboard_ball.position_changed.connect(self.on_clipboard_ball_moved)
+        self.screenshot_ball.clicked.connect(self.on_screenshot_ball_clicked)
+        self.record_ball.clicked.connect(self.o
+... [truncated]",""
+"Class:ui/sub_ball.py:SubBall","SubBall","ui/sub_ball.py",5,184,true,"from PySide6.QtGui import QMouseEvent, QPainter, QColor, QFont
+
+class SubBall(QWidget):
+    clicked = Signal()
+    position_changed = Signal(int, int)
+
+    def __init__(self, main_ball, text="""", radius=80, angle=math.pi * 1.25, tooltip=""Clipboard"", bg_color=None, icon=None):
+        super().__init__()
+        self.main_ball = main_ball
+        self.radius = radius # Target distance from main ball center
+        self.angle = angle   # Current angle in radians
+        self.default_angle = angle
+        self.default_radius = radius
+        self.text = text
+        self.tooltip = tooltip
+        self.bg_color = bg_color if bg_color else QColor(255, 165, 0, 230)
+        self.icon = icon
+        
+        self.init_ui()
+        self._is_dragging = False
+        self._has_moved = False
+        self._drag_start_pos = QPoint()
+        
+    def init_ui(self):
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        # 将小球稍微缩小一点
+        self.setFixedSize(36, 36)
+        
+        # 增加鼠标悬停提示
+        self.setToolTip(self.tooltip)
+        # 设置提示的样式
+        self.setStyleSheet(""QToolTip { color: #000; background-color: #ffffe0; border: 1px solid #ccc; font-weight: bold; }"")
+        
+    def paintEvent(self, event):
+        from PySide6.QtGui import QRadialGradient
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Modern gradient based on bg_color
+        r, g, b, a = self.bg_color.red(), self.bg_color.green(), self.bg_color.blue(), self.bg_color.alpha()
+        
+        # Lighter top-left
+        lighter = QColor(min(255, r + 40), min(255, g + 40), min(255, b + 40), a)
+        # Darker bottom-right
+        darker = QColor(max(0, r - 20), max(0, g - 20), max(0, b - 20), a)
+        
+        gradient = QRadialGradient(self.width() / 3, self.height() / 3, self.width() * 0.8)
+        gradient.setColorAt(0, lighter)
+        gradient.setColorAt(1, darker)
+        
+        painter.setBrush(gradient)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, self.width(), self.height())
+        
+        # Draw icon/text
+        painter.setPen(Qt.white)
+        font = QFont()
+        font.setPointSize(10) # 稍微调小字体以适应更小的球
+        font.setBold(True)
+        painter.setFont(font)
+        if hasattr(self, 'icon') and self.icon and not self.icon.isNull():
+            pixmap = self.icon.pixmap(20, 20)
+            if not pixmap.isNull():
+                painter.drawPixmap((self.width() - 20) // 2, (self.height() - 20) // 2, pixmap)
+            else:
+                painter.drawText(self.rect(), Qt.AlignCenter, self.text)
+        else:
+            painter.drawText(self.rect(), Qt.AlignCenter, self.text)
+
+    def reset_position(self):
+        self.angle = self.default_angle
+        self.radius = self.default_radius
+        self.update_position_from_main()
+
+    def update_position_from_main(self):
+        # Calculate center of main ball
+        mx = self.main_ball.x() + self.main_ball.width() / 2
+        my = self.main_ball.y() + self.main_ball.height() / 2
+        
+        # Calculate my center based on angle and radius
+        cx = mx + self.radius * math.cos(self.angle)
+        cy = my + self.radius * math.sin(self.angle)
+        
+        # Set top-left position
+        self.move(int(cx - self.width() / 2), int(cy - self.height() / 2))
+        self.position_changed.emit(self.x(), self.y())
+
+    def enterEvent(self, event):
+        from PySide6.QtWidgets import QToolTip
+        QToolTip.showText(self.mapToGlobal(QPoint(self.width() // 2, self.height())), self.tooltip, self)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        from PySide6.QtWidgets import QToolTip
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._has_moved = False
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self._has_moved = True
+            new_global_pos = event.globalPos() - self._drag_start_pos
+            
+            # My new center
+            scx = new_global_pos.x() + self.width() / 2
+            scy = new_global_pos.y() + self.height() / 2
+            
+            # Main ball center
+            mx = self.main_ball.x() + self.main_ball.width() / 2
+            my = self.main_ball.y() + self.main_ball.height() / 2
+            
+            # Calculate new angle and radius
+            dx = scx - mx
+            dy = scy - my
+            dist = math.hypot(dx, dy)
+  
+... [truncated]",""
+"Class:ui/settings.py:HotkeyLineEdit","HotkeyLineEdit","ui/settings.py",8,83,true,"from utils.config import save_hotkeys, save_option, DEFAULT_OPTIONS, DEFAULT_HOTKEYS
+
+class HotkeyLineEdit(QLineEdit):
+    focus_in = Signal()
+    focus_out = Signal()
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setMinimumHeight(34)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setStyleSheet(""""""
+            QLineEdit {
+                padding: 8px 12px;
+                font-size: 14px;
+                color: #1e293b;
+                background-color: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+            }
+            QLineEdit:hover {
+                border-color: #94a3b8;
+                background-color: #ffffff;
+            }
+            QLineEdit:focus {
+                border: 2px solid #3b82f6;
+                background-color: #ffffff;
+            }
+        """""")
+        
+    def keyPressEvent(self, event: QKeyEvent):
+        key = event.key()
+        modifiers = event.modifiers()
+        if key == Qt.Key_unknown: return
+
+        mods = []
+        if modifiers & Qt.ControlModifier: mods.append(""ctrl"")
+        if modifiers & Qt.AltModifier: mods.append(""alt"")
+        if modifiers & Qt.ShiftModifier: mods.append(""shift"")
+        if modifiers & Qt.MetaModifier: mods.append(""windows"")
+
+        key_str = """"
+        if Qt.Key_A <= key <= Qt.Key_Z: key_str = chr(key).lower()
+        elif Qt.Key_0 <= key <= Qt.Key_9: key_str = chr(key)
+        elif key == Qt.Key_F1: key_str = ""f1""
+        elif key == Qt.Key_F2: key_str = ""f2""
+        elif key == Qt.Key_F3: key_str = ""f3""
+        elif key == Qt.Key_F4: key_str = ""f4""
+        elif key == Qt.Key_F5: key_str = ""f5""
+        elif key == Qt.Key_F6: key_str = ""f6""
+        elif key == Qt.Key_F7: key_str = ""f7""
+        elif key == Qt.Key_F8: key_str = ""f8""
+        elif key == Qt.Key_F9: key_str = ""f9""
+        elif key == Qt.Key_F10: key_str = ""f10""
+        elif key == Qt.Key_F11: key_str = ""f11""
+        elif key == Qt.Key_F12: key_str = ""f12""
+        elif key == Qt.Key_Space: key_str = ""space""
+        elif key == Qt.Key_Escape: key_str = ""esc""
+        elif key == Qt.Key_Return or key == Qt.Key_Enter: key_str = ""enter""
+        elif key == Qt.Key_Tab: key_str = ""tab""
+        elif key == Qt.Key_Backspace or key == Qt.Key_Delete: 
+            self.setText("""")
+            return
+            
+        if not key_str and not mods: return
+        if key_str: mods.append(key_str)
+            
+        hotkey_text = ""+"".join(mods)
+        if key_str:
+            self.setText(hotkey_text)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.focus_in.emit()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.focus_out.emit()
+
+class HotkeyRow(QWidget):
+",""
+"Class:ui/settings.py:HotkeyRow","HotkeyRow","ui/settings.py",85,154,true,"        self.focus_out.emit()
+
+class HotkeyRow(QWidget):
+    text_changed = Signal(str, str)
+    focus_in = Signal()
+    focus_out = Signal()
+    
+    def __init__(self, name, label_text, current_hotkey=""""):
+        super().__init__()
+        self.name = name
+        self.setProperty(""hotkeyRow"", True)
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 6, 0, 6)
+        self.layout.setSpacing(10)
+        
+        self.label = QLabel(label_text)
+        self.label.setMinimumWidth(150)
+        self.label.setStyleSheet(""font-size: 14px; color: #111827; font-weight: bold;"")
+        
+        self.input = HotkeyLineEdit()
+        self.input.setText(current_hotkey)
+        self.input.setPlaceholderText(""按下快捷键"")
+        self.input.setAlignment(Qt.AlignCenter)
+        self.input.textChanged.connect(self._on_text_changed)
+        self.input.focus_in.connect(self.focus_in)
+        self.input.focus_out.connect(self.focus_out)
+        
+        self.btn_clear = QPushButton(""×"")
+        self.btn_clear.setFixedSize(24, 24)
+        self.btn_clear.setStyleSheet(""border-radius: 12px; background-color: #9ca3af; color: white; font-weight: bold; font-size: 14px;"")
+        self.btn_clear.clicked.connect(self.clear_input)
+        self.btn_clear.setCursor(Qt.PointingHandCursor)
+        
+        self.lbl_valid = QLabel(""✓"")
+        self.lbl_valid.setFixedSize(24, 24)
+        self.lbl_valid.setAlignment(Qt.AlignCenter)
+        
+        self.layout.addWidget(self.label)
+        self.layout.addWidget(self.input, 1)
+        self.layout.addWidget(self.btn_clear)
+        self.layout.addWidget(self.lbl_valid)
+        self._update_validity(current_hotkey)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.setStyleSheet(""QWidget[hotkeyRow=\""true\""] { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; }"")
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.setStyleSheet("""")
+        self.input.style().unpolish(self.input)
+        self.input.style().polish(self.input)
+        
+    def _on_text_changed(self, text):
+        self._update_validity(text)
+        self.text_changed.emit(self.name, text)
+
+    def _update_validity(self, text):
+        if text.strip():
+            self.lbl_valid.setStyleSheet(""border-radius: 12px; background-color: #22c55e; color: white; font-weight: bold; font-size: 14px;"")
+        else:
+            self.lbl_valid.setStyleSheet(""border-radius: 12px; background-color: #cbd5e1; color: white; font-weight: bold; font-size: 14px;"")
+
+    def clear_input(self):
+        self.input.setText("""")
+        
+    def set_hotkey(self, hk):
+        # Disconnect temporarily to avoid double emitting during programmatic change
+        self.input.blockSignals(True)
+        self.input.setText(hk)
+        self._update_validity(hk)
+        self.input.blockSignals(False)
+
+class SettingsDialog(QDialog):
+",""
+"Class:ui/settings.py:SettingsDialog","SettingsDialog","ui/settings.py",156,900,true,"        self.input.blockSignals(False)
+
+class SettingsDialog(QDialog):
+    settings_saved = Signal(dict) # Emits updated options
+
+    def __init__(self, options, hotkey_mgr, clipboard_mgr=None, recent_mgr=None, parent=None):
+        super().__init__(parent)
+        self.options = options
+        self.hotkey_mgr = hotkey_mgr
+        self.clipboard_mgr = clipboard_mgr
+        self.recent_mgr = recent_mgr
+        self.setWindowTitle(""桌面人偶设置"")
+        self.setFixedSize(580, 480)
+        self.setStyleSheet(""""""
+            QDialog {
+                background-color: #f1f5f9;
+                color: #0f172a;
+            }
+            QWidget {
+                color: #0f172a;
+            }
+            QMessageBox {
+                background-color: #ffffff;
+                color: #0f172a;
+            }
+            QLabel {
+                color: #334155;
+                font-size: 14px;
+            }
+            QCheckBox {
+                font-size: 14px;
+                color: #334155;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border-radius: 4px;
+                border: 1px solid #cbd5e1;
+                background-color: #ffffff;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #94a3b8;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #3b82f6;
+                border-color: #3b82f6;
+            }
+            QTabWidget::pane {
+                border: 1px solid #e2e8f0;
+                background-color: #ffffff;
+                border-radius: 6px;
+            }
+            QTabBar::tab {
+                background: #f1f5f9;
+                color: #64748b;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+                border: 1px solid transparent;
+                border-bottom: none;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:hover {
+                color: #334155;
+                background: #e2e8f0;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                color: #0f172a;
+                border: 1px solid #e2e8f0;
+                border-bottom: 1px solid #ffffff;
+            }
+        """""")
+        
+        self.original_hotkeys = dict(self.hotkey_mgr.hotkeys)
+        self.current_hotkeys = dict(self.original_hotkeys)
+        
+        import copy
+        self.original_options = copy.deepcopy(self.options)
+        self.current_options = copy.deepcopy(self.options)
+        
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
+        self.init_ui()
+        
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        
+        self.tabs = QTabWidget()
+        
+        # Helper for Restore Default Buttons
+        def create_restore_btn(callback):
+            btn = QPushButton(""恢复默认"") # 恢复默认设置
+            btn.setStyleSheet(""padding: 6px 16px; font-size: 13px; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #475569; border-radius: 6px; font-weight: bold;"")
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.clicked.connect(callback)
+            
+            layout = QHBoxLayout()
+            layout.addStretch()
+            layout.addWidget(btn)
+            return layout
+        
+        # --- Tab 1: General ---
+        self.tab_general = QWidget()
+        gen_layout = QVBoxLayout(self.tab_general)
+        gen_layout.setSpacing(15)
+        
+        self.chk_hide_ball = QCheckBox(""截屏时自动隐藏悬浮球"") # 截屏时自动隐藏悬浮球
+        self.chk_hide_ball.setChecked(self.current_options.get(""hide_ball_when_screenshot"", True))
+        self.chk_hide_ball.stateChanged.connect(self._on_general_changed)
+        gen_layout.addWidget(self.chk_hide_ball)
+        
+        gen_layout.addStretch()
+        gen_layout.addLayout(create_restore_btn(self._restore_general_defaults))
+        self.tabs.addTab(self.tab_general, ""常规"") # 常规设置
+        
+        # --- Tab 2: Clipboard ---
+        self.tab_clipboard = QWidget()
+        clip_layout = QVBoxLayout(self.tab_clipboard)
+        clip_layout.setSpacing(15)
+        
+        self.chk_clip_tracking = QCheckBox(""监听剪贴板变化"") # 监听剪贴板变化
+        self.chk_clip_tracking.setChecked(self.current_options.get(""clipboard_tracking_enabled"", True))
+        self.chk_clip_tracking.stateChanged.connect(self._on_clipboard_changed)
+        clip_layout.addWidget(self.chk_clip_tracking)
+        
+        limit_layout = QHBoxLayout()
+        limit_label = QLabel(""最大条数:"") # 剪贴板历史最大条数:
+        self.spin_limit = QSpinBox()
+        self.spin_limit.setRange(1, 999)
+        self.spin_limit.setValue(self.cu
+... [truncated]",""
+"Class:ui/search_box.py:SearchBoxPanel","SearchBoxPanel","ui/search_box.py",5,99,true,"from PySide6.QtGui import QKeyEvent
+
+class SearchBoxPanel(QWidget):
+    search_requested = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self._main_ball = None
+        self._relative_offset = (-100, 60) # Below the main ball
+
+    def set_main_ball(self, ball):
+        self._main_ball = ball
+
+    def init_ui(self):
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"") # 桌面人偶
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(300, 60)
+        
+        # Main container to allow border radius with translucent background
+        self.container = QWidget(self)
+        self.container.setFixedSize(self.width(), self.height())
+        self.container.setStyleSheet(""""""
+            QWidget {
+                background-color: rgba(255, 255, 255, 240);
+                border: 1px solid #ccc;
+                border-radius: 30px;
+            }
+        """""")
+        
+        layout = QHBoxLayout(self.container)
+        layout.setContentsMargins(20, 5, 10, 5)
+        
+        self.input = QLineEdit()
+        self.input.setPlaceholderText(""\u641c\u7d22..."") # 搜索...
+        self.input.setStyleSheet(""""""
+            QLineEdit {
+                border: none;
+                background: transparent;
+                font-size: 16px;
+                color: #333;
+            }
+        """""")
+        self.input.returnPressed.connect(self._on_search)
+        
+        self.btn_search = QPushButton(""\uD83D\uDD0D"") # 
+        self.btn_search.setFixedSize(40, 40)
+        self.btn_search.setCursor(Qt.PointingHandCursor)
+        self.btn_search.setStyleSheet(""""""
+            QPushButton {
+                border: none;
+                background-color: #f0f0f0;
+                border-radius: 20px;
+                font-size: 18px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+        """""")
+        self.btn_search.clicked.connect(self._on_search)
+        
+        layout.addWidget(self.input, 1)
+        layout.addWidget(self.btn_search)
+
+    def _on_search(self):
+        text = self.input.text().strip()
+        if text:
+            self.search_requested.emit(text)
+            self.input.setText("""")
+            self.hide()
+
+    def update_position(self, ball_x, ball_y):
+        new_x = ball_x + self._relative_offset[0]
+        new_y = ball_y + self._relative_offset[1]
+        
+        from PySide6.QtWidgets import QApplication
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+        new_x = max(screen_geo.left(), min(new_x, screen_geo.right() - self.width()))
+        new_y = max(screen_geo.top(), min(new_y, screen_geo.bottom() - self.height()))
+        self.move(new_x, new_y)
+
+    def toggle_visibility(self, x, y):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.update_position(x, y)
+            self.show()
+            self.raise_()
+            self.activateWindow()
+            self.input.setFocus()
+
+    def keyPressEvent(self, event: QKeyEvent):
+        if event.key() == Qt.Key_Escape:
+            self.hide()
+        else:
+            super().keyPressEvent(event)
+",""
+"Class:ui/screenshot_mask.py:ScreenshotMask","ScreenshotMask","ui/screenshot_mask.py",10,255,true,"
+
+class ScreenshotMask(QWidget):
+    finished = Signal()
+    rect_selected = Signal(object)
+
+    def __init__(self, mode=""screenshot"", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None):
+        self.mode = mode
+        super().__init__()
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setCursor(Qt.CrossCursor)
+        self.setMouseTracking(True)
+
+        self.start_pos_global = None
+        self.current_pos_global = None
+        self.is_dragging = False
+        self.smart_rect_physical = None
+        self.smart_rect_global = None
+        self.background_image = background_image
+        self.all_rects_global = all_rects_global if all_rects_global is not None else get_all_visible_rects()
+        self.virtual_screen_left = virtual_screen_left if virtual_screen_left is not None else win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+        self.virtual_screen_top = virtual_screen_top if virtual_screen_top is not None else win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+        self.total_geometry = self._get_total_geometry()
+        self.setGeometry(self.total_geometry)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.ActiveWindowFocusReason)
+
+    def _get_total_geometry(self):
+        total_rect = QRect()
+        for screen in QGuiApplication.screens():
+            total_rect = total_rect.united(screen.geometry())
+        return total_rect
+
+    def _screen_for_logical_point(self, point):
+        screen = QGuiApplication.screenAt(point)
+        return screen or QGuiApplication.primaryScreen()
+
+    def _screen_for_physical_point(self, point):
+        for screen in QGuiApplication.screens():
+            geom = screen.geometry()
+            ratio = screen.devicePixelRatio()
+            left = int(round(geom.x() * ratio))
+            top = int(round(geom.y() * ratio))
+            right = int(round((geom.x() + geom.width()) * ratio))
+            bottom = int(round((geom.y() + geom.height()) * ratio))
+            if left <= point.x() <= right and top <= point.y() <= bottom:
+                return screen
+        return QGuiApplication.primaryScreen()
+
+    def _logical_point_to_physical(self, point):
+        screen = self._screen_for_logical_point(point)
+        ratio = screen.devicePixelRatio()
+        geom = screen.geometry()
+        return QPoint(
+            int(round((point.x() - geom.x()) * ratio + geom.x() * ratio)),
+            int(round((point.y() - geom.y()) * ratio + geom.y() * ratio)),
+        )
+
+    def _physical_rect_to_logical(self, rect):
+        center = rect.center()
+        screen = self._screen_for_physical_point(center)
+        ratio = screen.devicePixelRatio()
+        geom = screen.geometry()
+        return QRect(
+            int(round((rect.x() - geom.x() * ratio) / ratio + geom.x())),
+            int(round((rect.y() - geom.y() * ratio) / ratio + geom.y())),
+            max(1, int(round(rect.width() / ratio))),
+            max(1, int(round(rect.height() / ratio))),
+        )
+
+    def _logical_rect_to_physical(self, rect):
+        center = rect.center()
+        screen = self._screen_for_logical_point(center)
+        ratio = screen.devicePixelRatio()
+        geom = screen.geometry()
+        return QRect(
+            int(round((rect.x() - geom.x()) * ratio + geom.x() * ratio)),
+            int(round((rect.y() - geom.y()) * ratio + geom.y() * ratio)),
+            max(1, int(round(rect.width() * ratio))),
+            max(1, int(round(rect.height() * ratio))),
+        )
+
+    def find_best_rect(self, global_pos):
+        physical_pos = self._logical_point_to_physical(global_pos)
+        screen_area = self.total_geometry.width() * self.total_geometry.height()
+        best_rect = None
+        min_area = float('inf')
+
+        try:
+            uia_rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
+            if uia_rect:
+                area = uia_rect.width() * uia_rect.height()
+                if 20 < area < screen_area * 0.95:
+                    best_rect = uia_rect
+                    min_area = area
+        except Exception:
+            pass
+
+        for rect in self.all_rects_global:
+            if rect.contains(physical_pos):
+                area = rect.width() * rect.height()
+                if 20 < area < min_area:
+                    min_area = area
+                    best_rect = rect
+
+        return best_rect
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        offset = self.total_geometry.topLeft()
+
+        if self.background_image is not None and not has
+... [truncated]",""
+"Class:ui/recording_border.py:RecordingBorder","RecordingBorder","ui/recording_border.py",5,92,true,"from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QFont
+
+class RecordingBorder(QWidget):
+    countdown_finished = Signal()
+
+    def __init__(self, target_rect_physical: QRect):
+        super().__init__()
+        self.setWindowTitle(""桌面人偶_录屏边框"")
+        
+        # Transparent for mouse events so user can click through the border
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | 
+            Qt.WindowStaysOnTopHint | 
+            Qt.Tool | 
+            Qt.WindowTransparentForInput
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        # Convert physical target rect back to logical rect for drawing
+        center = target_rect_physical.center()
+        screen = QGuiApplication.primaryScreen()
+        for s in QGuiApplication.screens():
+            geom = s.geometry()
+            ratio = s.devicePixelRatio()
+            left = int(round(geom.x() * ratio))
+            top = int(round(geom.y() * ratio))
+            right = int(round((geom.x() + geom.width()) * ratio))
+            bottom = int(round((geom.y() + geom.height()) * ratio))
+            if left <= center.x() <= right and top <= center.y() <= bottom:
+                screen = s
+                break
+
+        ratio = screen.devicePixelRatio()
+        geom = screen.geometry()
+        
+        lx = int(round((target_rect_physical.x() - geom.x() * ratio) / ratio + geom.x()))
+        ly = int(round((target_rect_physical.y() - geom.y() * ratio) / ratio + geom.y()))
+        lw = max(1, int(round(target_rect_physical.width() / ratio)))
+        lh = max(1, int(round(target_rect_physical.height() / ratio)))
+        
+        self.logical_rect = QRect(lx, ly, lw, lh)
+        
+        # Expand the window by 4 logical pixels so the 2-pixel border is drawn OUTSIDE the capture area
+        # This prevents the border itself from being recorded
+        self.setGeometry(self.logical_rect.adjusted(-4, -4, 4, 4))
+        
+        self.countdown = 3
+        self.is_recording = False
+        
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.tick)
+        self.timer.start(1000)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Draw red border
+        pen = QPen(QColor(255, 0, 0, 200), 4) # 4 logical pixels thick
+        pen.setJoinStyle(Qt.MiterJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        
+        # Draw exactly at the bounds of the widget (since widget is larger than capture area)
+        # Inward 2px offset for the 4px pen width so it fully fits inside the widget without clipping
+        painter.drawRect(2, 2, self.width() - 4, self.height() - 4)
+        
+        # Draw countdown or recording indicator
+        font = QFont(""Arial"", 48, QFont.Bold)
+        painter.setFont(font)
+        painter.setPen(QColor(255, 0, 0, 220))
+        
+        if not self.is_recording:
+            painter.drawText(self.rect(), Qt.AlignCenter, str(self.countdown))
+        else:
+            # Maybe just draw a tiny REC indicator or keep it empty
+            # Let's keep it empty during recording so it doesn't distract or overlap
+            pass
+
+    def tick(self):
+        if self.countdown > 1:
+            self.countdown -= 1
+            self.update()
+        else:
+            self.countdown = 0
+            self.is_recording = True
+            self.timer.stop()
+            self.update()
+            self.countdown_finished.emit()
+",""
+"Class:ui/recent_panel.py:RecentListWidget","RecentListWidget","ui/recent_panel.py",8,28,true,"from ui.recent_dialogs import ExcludedExtensionsDialog, ExtensionFilterDialog
+
+class RecentListWidget(QListWidget):
+    item_right_clicked = Signal(object)
+    order_changed = Signal(list)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
+        self.order_changed.emit(new_order)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        item = self.itemAt(event.pos())
+        if item and event.button() == Qt.RightButton:
+            self.item_right_clicked.emit(item)
+
+class RecentItemWidget(QWidget):",""
+"Class:ui/recent_panel.py:RecentItemWidget","RecentItemWidget","ui/recent_panel.py",30,92,true,"            self.item_right_clicked.emit(item)
+
+class RecentItemWidget(QWidget):
+    deleted = Signal(object)
+
+    def __init__(self, item_data, parent=None):
+        super().__init__(parent)
+        self.item_data = item_data
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet(""RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } RecentItemWidget:hover { border: 1px solid #3b82f6; }"")
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        self.btn_delete = QPushButton(""✖"")
+        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setStyleSheet(""""""
+            QPushButton { border-radius: 12px; background-color: #ff4c4c; color: white; font-weight: bold; font-size: 12px; }
+            QPushButton:hover { background-color: #ff0000; }
+        """""")
+        self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.clicked.connect(self._on_delete_clicked)
+        layout.addWidget(self.btn_delete)
+        
+        from PySide6.QtWidgets import QFileIconProvider
+        from PySide6.QtCore import QFileInfo
+        
+        path = item_data.get(""path"", """")
+        name = item_data.get(""name"", """")
+        
+        icon = QFileIconProvider().icon(QFileInfo(path))
+        
+        icon_label = QLabel()
+        icon_label.setPixmap(icon.pixmap(24, 24))
+        layout.addWidget(icon_label)
+        
+        text_layout = QVBoxLayout()
+        text_layout.setSpacing(2)
+        
+        name_label = QLabel()
+        name_label.setStyleSheet(""color: #000000; font-size: 13px; font-weight: bold; background: transparent;"")
+        
+        path_label = QLabel()
+        path_label.setStyleSheet(""color: #666666; font-size: 11px; background: transparent;"")
+        path_label.setToolTip(path)
+        
+        from PySide6.QtGui import QFontMetrics
+        name_fm = QFontMetrics(name_label.font())
+        path_fm = QFontMetrics(path_label.font())
+        
+        # Max width 190 to account for delete button and icon
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 190)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 190)
+        
+        name_label.setText(elided_name)
+        path_label.setText(elided_path)
+        
+        text_layout.addWidget(name_label)
+        text_layout.addWidget(path_label)
+        
+        layout.addLayout(text_layout, 1)
+
+    def _on_delete_clicked(self):
+        self.deleted.emit(self.item_data)
+
+class RecentPanel(QWidget):",""
+"Class:ui/recent_panel.py:RecentPanel","RecentPanel","ui/recent_panel.py",94,291,true,"        self.deleted.emit(self.item_data)
+
+class RecentPanel(QWidget):
+    item_clicked = Signal(object)
+    item_right_clicked = Signal(object)
+    item_deleted = Signal(object)
+    toggle_tracking_clicked = Signal()
+    excluded_extensions_changed = Signal(list)
+    visibility_dict_changed = Signal(dict)
+    history_cleared = Signal()
+    history_reordered = Signal(list)
+
+    def __init__(self):
+        super().__init__()
+        self._is_dragging = False
+        self._drag_start_pos = None
+        self._relative_offset = None
+        self._main_ball = None
+        self._current_items = []
+        self._excluded_extensions = []
+        self._visibility_dict = {}
+        self.init_ui()
+
+    def set_main_ball(self, ball):
+        self._main_ball = ball
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPos() - self._drag_start_pos)
+            if self._main_ball:
+                self._relative_offset = (self.x() - self._main_ball.x(), self.y() - self._main_ball.y())
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            event.accept()
+
+    def init_ui(self):
+        self.setWindowTitle(""最近使用"")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
+        self.setFixedSize(320, 420)
+        self.setStyleSheet(""RecentPanel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QWidget { color: #000000; }"")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        title_layout = QHBoxLayout()
+        
+        self.btn_excluded = QPushButton(""禁止记录"")
+        self.btn_excluded.setFixedSize(70, 28)
+        self.btn_excluded.setCursor(Qt.PointingHandCursor)
+        self.btn_excluded.setStyleSheet(""QPushButton { background-color: #ef4444; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #dc2626; }"")
+        self.btn_excluded.clicked.connect(self._on_excluded_clicked)
+        
+        title = QLabel(""最近使用"")
+        title.setStyleSheet(""font-weight: bold; font-size: 14px; color: #333;"")
+        
+        btn_close = QPushButton(""×"")
+        btn_close.setFixedSize(24, 24)
+        btn_close.setStyleSheet(""QPushButton { background-color: transparent; border: none; color: #777; font-weight: bold; font-size: 18px; } QPushButton:hover { color: #ff0000; }"")
+        btn_close.clicked.connect(self.hide)
+        
+        title_layout.addWidget(self.btn_excluded)
+        title_layout.addStretch()
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(btn_close)
+        layout.addLayout(title_layout)
+        
+        self.list_widget = RecentListWidget()
+        self.list_widget.setStyleSheet(""QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }"")
+        self.list_widget.itemDoubleClicked.connect(self._on_item_clicked)
+        self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
+        self.list_widget.order_changed.connect(self.history_reordered.emit)
+        
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.btn_filter = QPushButton(""查看"")
+        self.btn_filter.setStyleSheet(""QPushButton { background-color: #3b82f6; color: white; border-radius: 5px; padding: 6px 12px; font-weight: bold; } QPushButton:hover { background-color: #2563eb; }"")
+        self.btn_filter.clicked.connect(self._on_filter_clicked)
+        
+        self.btn_toggle_tracking = QPushButton(""记录"")
+        self.btn_toggle_tracking.setFixedSize(60, 28)
+        self.btn_toggle_tracking.setCursor(Qt.PointingHandCursor)
+        self.btn_toggle_tracking.setStyleSheet(""QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #45a049; }"")
+        self.btn_toggle_tracking.clicked.connect(self.toggle_tracking_clicked.emit)
+        
+        self.btn_clear_all = QPushButton(""清空"")
+        self.btn_clear_all.setFixedSize(50, 28)
+        self.btn_clear_all.setCursor(Qt.PointingHandCursor)
+        self.btn_clear_all.setStyleSheet(""QPushButton { background-color: #ff4c4c; color: white; border-radius: 5px; padding: 6px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #ff0000; }"")
+        self.btn_clear_all.clicked.connect(self._on_clear_clicked)
+        
+        bottom_layout.addWidget(self.btn_filter)
+        bottom_layout.addStretch()
+        bottom_layout.addWidget(self.btn_toggle_trac
+... [truncated]",""
+"Class:ui/recent_dialogs.py:ExcludedExtensionsDialog","ExcludedExtensionsDialog","ui/recent_dialogs.py",4,115,true,"from PySide6.QtCore import Qt
+
+class ExcludedExtensionsDialog(QDialog):
+    def __init__(self, excluded_extensions, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(""排除记录"")
+        self.setFixedSize(320, 400)
+        self.setStyleSheet(""QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }"")
+        
+        # Ensure backward compatibility if it's a list
+        if isinstance(excluded_extensions, list):
+            self.excluded = {ext: True for ext in excluded_extensions}
+        else:
+            self.excluded = dict(excluded_extensions)
+        
+        layout = QVBoxLayout(self)
+        
+        desc = QLabel(""勾选左侧选框表示禁止记录\n(例如: .tmp, .dat)"")
+        layout.addWidget(desc)
+        
+        input_layout = QHBoxLayout()
+        self.input_ext = QLineEdit()
+        self.input_ext.setPlaceholderText(""输入后缀，例如 .txt"")
+        self.input_ext.setStyleSheet(""padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f8fafc; color: #0f172a;"")
+        
+        btn_add = QPushButton(""添加"")
+        btn_add.setStyleSheet(""padding: 6px 12px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold;"")
+        btn_add.clicked.connect(self._add_ext)
+        
+        input_layout.addWidget(self.input_ext)
+        input_layout.addWidget(btn_add)
+        layout.addLayout(input_layout)
+        
+        # Add Select All button
+        btn_select_all = QPushButton(""全选 / 取消全选"")
+        btn_select_all.setStyleSheet(""padding: 6px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;"")
+        btn_select_all.clicked.connect(self._toggle_select_all)
+        layout.addWidget(btn_select_all)
+        
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(""border: 1px solid #cbd5e1; border-radius: 4px;"")
+        layout.addWidget(self.list_widget)
+        
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton(""确定"")
+        btn_ok.setStyleSheet(""padding: 8px 20px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold;"")
+        btn_cancel = QPushButton(""取消"")
+        btn_cancel.setStyleSheet(""padding: 8px 20px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;"")
+        
+        btn_ok.clicked.connect(self.accept)
+        btn_cancel.clicked.connect(self.reject)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_ok)
+        layout.addLayout(btn_layout)
+        
+        self._refresh_list()
+
+    def _toggle_select_all(self):
+        all_checked = all(self.excluded.values()) if self.excluded else False
+        for ext in self.excluded:
+            self.excluded[ext] = not all_checked
+        self._refresh_list()
+
+    def _normalize_ext(self, ext):
+        ext = ext.strip().lower()
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        return ext
+
+    def _add_ext(self):
+        ext = self._normalize_ext(self.input_ext.text())
+        if ext and ext not in self.excluded:
+            self.excluded[ext] = True
+            self._refresh_list()
+        self.input_ext.clear()
+
+    def _remove_ext(self, ext):
+        if ext in self.excluded:
+            del self.excluded[ext]
+        self._refresh_list()
+
+    def _on_checkbox_toggled(self, ext, state):
+        self.excluded[ext] = state
+
+    def _refresh_list(self):
+        self.list_widget.clear()
+        for ext in sorted(list(self.excluded.keys())):
+            item = QListWidgetItem()
+            self.list_widget.addItem(item)
+            
+            row_widget = QWidget()
+            row_layout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(5, 2, 5, 2)
+            
+            chk = QCheckBox(ext)
+            chk.setChecked(self.excluded[ext])
+            chk.toggled.connect(lambda state, e=ext: self._on_checkbox_toggled(e, state))
+            
+            btn_del = QPushButton(""删除"")
+            btn_del.setStyleSheet(""background-color: #ef4444; color: white; border-radius: 4px; padding: 4px 8px; font-weight: bold;"")
+            btn_del.setCursor(Qt.PointingHandCursor)
+            btn_del.clicked.connect(lambda checked, e=ext: self._remove_ext(e))
+            
+            row_layout.addWidget(chk)
+            row_layout.addStretch()
+            row_layout.addWidget(btn_del)
+            
+            item.setSizeHint(row_widget.sizeHint())
+            self.list_widget.setItemWidget(item, row_widget)
+
+    def get_excluded_extensions(self):
+        return self.excluded
+
+",""
+"Class:ui/recent_dialogs.py:ExtensionFilterDialog","ExtensionFilterDialog","ui/recent_dialogs.py",118,186,true,"
+
+class ExtensionFilterDialog(QDialog):
+    def __init__(self, unique_extensions, visible_extensions_dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(""查看"")
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        self.setFixedSize(300, 400)
+        self.setStyleSheet(""QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }"")
+        
+        self.result_dict = dict(visible_extensions_dict)
+        
+        layout = QVBoxLayout(self)
+        
+        desc = QLabel(""取消勾选以在面板中隐藏该类型"")
+        layout.addWidget(desc)
+
+        btn_select_all = QPushButton(""全选 / 取消全选"")
+        btn_select_all.setStyleSheet(""padding: 6px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;"")
+        btn_select_all.clicked.connect(self._toggle_select_all)
+        layout.addWidget(btn_select_all)
+        
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet(""border: 1px solid #cbd5e1; border-radius: 4px;"")
+        
+        self.checkboxes = []
+        for ext in sorted(list(unique_extensions)):
+            item = QListWidgetItem()
+            self.list_widget.addItem(item)
+            
+            chk = QCheckBox(ext if ext else ""未知后缀"")
+            # If not explicitly false in dict, it's visible (default true)
+            is_visible = self.result_dict.get(ext, True)
+            chk.setChecked(is_visible)
+            
+            self.checkboxes.append((ext, chk))
+            
+            item.setSizeHint(chk.sizeHint())
+            self.list_widget.setItemWidget(item, chk)
+            
+        layout.addWidget(self.list_widget)
+        
+        btn_layout = QHBoxLayout()
+        btn_ok = QPushButton(""确定"")
+        btn_ok.setStyleSheet(""padding: 8px 20px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold;"")
+        btn_cancel = QPushButton(""取消"")
+        btn_cancel.setStyleSheet(""padding: 8px 20px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold;"")
+        
+        btn_ok.clicked.connect(self.accept)
+        btn_cancel.clicked.connect(self.reject)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_ok)
+        layout.addLayout(btn_layout)
+
+    def _toggle_select_all(self):
+        if not self.checkboxes:
+            return
+        # If all checked, uncheck all. Else check all.
+        all_checked = all(chk.isChecked() for ext, chk in self.checkboxes)
+        for ext, chk in self.checkboxes:
+            chk.setChecked(not all_checked)
+
+    def accept(self):
+        for ext, chk in self.checkboxes:
+            self.result_dict[ext] = chk.isChecked()
+        super().accept()
+
+    def get_visibility_dict(self):
+        return self.result_dict
+",""
+"Class:ui/panel.py:PinnedImageDialog","PinnedImageDialog","ui/panel.py",8,101,true,"import base64
+
+class PinnedImageDialog(QWidget):
+    def __init__(self, pixmap, item_data=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"") # 桌面人偶
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.original_pixmap = pixmap
+        self.item_data = item_data
+        self.scale_factor = 1.0
+        
+        self._is_dragging = False
+        self._drag_start_pos = None
+
+        self.setFixedSize(pixmap.size())
+
+        screen = QApplication.primaryScreen()
+        if screen:
+            ratio = screen.devicePixelRatio()
+            if ratio and ratio > 1.0:
+                self.scale_factor = 1.0 / ratio
+                self.setFixedSize(
+                    max(1, int(pixmap.width() * self.scale_factor)),
+                    max(1, int(pixmap.height() * self.scale_factor)),
+                )
+        
+        # Add a subtle shadow or just rely on OS. Since it's translucent, a slight border might help if there are transparent parts, but raw image is fine.
+        # Add tooltip to tell users how to close
+        self.setToolTip(""\u6eda\u8f6e\u7f29\u653e\uff0c\u53cc\u51fb\u5173\u95ed"") # 滚轮缩放，双击关闭
+
+    def paintEvent(self, event):
+        from PySide6.QtGui import QPainter
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        
+        scaled_width = int(self.original_pixmap.width() * self.scale_factor)
+        scaled_height = int(self.original_pixmap.height() * self.scale_factor)
+        
+        painter.drawPixmap(0, 0, scaled_width, scaled_height, self.original_pixmap)
+
+    def wheelEvent(self, event):
+        angle = event.angleDelta().y()
+        
+        # Calculate cursor position relative to the image before scaling
+        cursor_x = event.position().x()
+        cursor_y = event.position().y()
+        
+        old_scale = self.scale_factor
+        
+        if angle > 0:
+            self.scale_factor *= 1.15
+        else:
+            self.scale_factor *= 0.85
+            
+        self.scale_factor = max(0.1, min(self.scale_factor, 15.0))
+        
+        if self.scale_factor != old_scale:
+            scaled_width = int(self.original_pixmap.width() * self.scale_factor)
+            scaled_height = int(self.original_pixmap.height() * self.scale_factor)
+            
+            self.setFixedSize(scaled_width, scaled_height)
+            
+            # Adjust window position so zoom focuses on mouse cursor
+            # new_x = old_window_x - (cursor_x * (new_scale/old_scale) - cursor_x)
+            new_x = self.x() - int(cursor_x * (self.scale_factor / old_scale) - cursor_x)
+            new_y = self.y() - int(cursor_y * (self.scale_factor / old_scale) - cursor_y)
+            self.move(new_x, new_y)
+            
+            self.update()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            self.close()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPos() - self._drag_start_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            event.accept()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent):
+        self.close()
+        
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.close()
+
+class DetailsDialog(QDialog):
+",""
+"Class:ui/panel.py:DetailsDialog","DetailsDialog","ui/panel.py",103,116,true,"            self.close()
+
+class DetailsDialog(QDialog):
+    def __init__(self, item_data, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(""剪贴板内容详情"")
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        self.resize(500, 400)
+        layout = QVBoxLayout(self)
+        
+        text = item_data.get(""value"", """") if isinstance(item_data, dict) else str(item_data)
+        text_edit = QPlainTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText(text)
+        text_edit.setStyleSheet(""font-size: 14px; color: #1e293b; background-color: #f8fafc; border: none;"")
+        layout.addWidget(text_edit)
+
+class ClipboardItemWidget(QWidget):
+",""
+"Class:ui/panel.py:ClipboardItemWidget","ClipboardItemWidget","ui/panel.py",118,246,true,"        layout.addWidget(text_edit)
+
+class ClipboardItemWidget(QWidget):
+    deleted = Signal(object)
+    viewed = Signal(object)
+    
+    def __init__(self, text, full_item, parent=None):
+        super().__init__(parent)
+        self.full_item = full_item
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet(""ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } ClipboardItemWidget:hover { border: 1px solid #3b82f6; }"")
+        
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(1000)
+        self.hover_timer.timeout.connect(self.show_hover_effect)
+        self.full_tooltip_text = """"
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        self.btn_view = QPushButton("""") # View details
+        self.btn_view.setFixedSize(24, 24)
+        self.btn_view.setStyleSheet(""""""
+            QPushButton { border-radius: 12px; background-color: #4CAF50; color: white; font-weight: bold; font-size: 12px; }
+            QPushButton:hover { background-color: #45a049; }
+        """""")
+        self.btn_view.setCursor(Qt.PointingHandCursor)
+        self.btn_view.clicked.connect(self._on_view_clicked)
+        layout.addWidget(self.btn_view)
+        
+        self.btn_delete = QPushButton(""✖"")
+        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setStyleSheet(""""""
+            QPushButton { border-radius: 12px; background-color: #ff4c4c; color: white; font-weight: bold; font-size: 12px; }
+            QPushButton:hover { background-color: #ff0000; }
+        """""")
+        self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.clicked.connect(self._on_delete_clicked)
+        layout.addWidget(self.btn_delete)
+        
+        if isinstance(full_item, dict) and full_item.get(""type"") == ""image"":
+            val = full_item.get(""value"", """")
+            image = QImage()
+            import os
+            if full_item.get(""is_path"", False) or (os.path.exists(val) and val.endswith('.png')):
+                try:
+                    with open(val, ""rb"") as f:
+                        image.loadFromData(f.read(), ""PNG"")
+                except Exception:
+                    pass
+            else:
+                try:
+                    data = base64.b64decode(val)
+                    image.loadFromData(data, ""PNG"")
+                except:
+                    pass
+            pixmap = QPixmap.fromImage(image)
+            # 缩放至最大高度 60 像素，保持比例
+            pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
+            self.label = QLabel()
+            self.full_tooltip_text = f""图片路径: {val}""
+            self.label.setPixmap(pixmap)
+            self.label.setStyleSheet(""background: transparent;"")
+            
+            img_container = QWidget()
+            img_container.setStyleSheet(""background: transparent;"")
+            img_layout = QHBoxLayout(img_container)
+            img_layout.setContentsMargins(0, 0, 0, 0)
+            img_layout.addStretch()
+            img_layout.addWidget(self.label)
+            img_layout.addStretch()
+            
+            layout.addWidget(img_container, 1)
+        else:
+            from PySide6.QtGui import QFontMetrics
+            self.label = QLabel()
+            self.full_tooltip_text = text
+            self.label.setStyleSheet(""color: #000000; font-size: 13px; background: transparent;"")
+            
+            display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
+            display_text = display_text.replace('\n', '  ')
+            
+            fm = QFontMetrics(self.label.font())
+            max_width = 190
+            
+            if fm.horizontalAdvance(display_text) <= max_width:
+                final_text = display_text
+            else:
+                line1 = """"
+                rem = """"
+                for i in range(len(display_text), 0, -1):
+                    if fm.horizontalAdvance(display_text[:i]) <= max_width:
+                        line1 = display_text[:i]
+                        rem = display_text[i:]
+                        break
+                
+                if not line1:
+                    line1 = display_text[:1]
+                    rem = display_text[1:]
+                    
+                if fm.horizontalAdvance(rem) <= max_width:
+                    final_text = line1 + ""\n"" + rem
+                else:
+                    line2 = fm.elidedText(rem, Qt.ElideRight, max_width)
+                    final_text = line1 + ""\n"" + line2
+                    
+            self.label.setText(final_text)
+            layout.addWidget(self.label, 1)
+        
+    def _on_delete_clicked(self):
+        self.deleted.emit(self.full_item)
+        
+    def _on_view_clicked(self):
+        self.viewed.em
+... [truncated]",""
+"Class:ui/panel.py:ClipboardListWidget","ClipboardListWidget","ui/panel.py",248,267,true,"        QToolTip.showText(QCursor.pos(), self.full_tooltip_text, self)
+
+class ClipboardListWidget(QListWidget):
+    order_changed = Signal(list)
+    item_right_clicked = Signal(object)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+    def dropEvent(self, event):
+        super().dropEvent(event)
+        new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
+        self.order_changed.emit(new_order)
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        item = self.itemAt(event.pos())
+        if item and event.button() == Qt.RightButton:
+            self.item_right_clicked.emit(item)
+
+class Panel(QWidget):
+",""
+"Class:ui/panel.py:Panel","Panel","ui/panel.py",269,582,true,"            self.item_right_clicked.emit(item)
+
+class Panel(QWidget):
+    item_clicked = Signal(object)
+    item_right_clicked = Signal(object)
+    item_deleted = Signal(object)
+    viewed = Signal(object)
+    history_cleared = Signal(str)
+    history_reordered = Signal(list)
+    toggle_tracking_clicked = Signal()
+    toggle_text_tracking_clicked = Signal()
+    toggle_image_tracking_clicked = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._is_dragging = False
+        self._drag_start_pos = None
+        self._relative_offset = None
+        self._main_ball = None
+        self._current_history = []
+        self.init_ui()
+
+    def set_main_ball(self, ball):
+        self._main_ball = ball
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPos() - self._drag_start_pos)
+            if self._main_ball:
+                self._relative_offset = (self.x() - self._main_ball.x(), self.y() - self._main_ball.y())
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            event.accept()
+
+    def init_ui(self):
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
+        self.setFixedSize(320, 420)
+        self.setStyleSheet(""Panel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QWidget { color: #000000; }"")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        title_layout = QHBoxLayout()
+        
+        # Tracking Toggle Buttons (Text/Image)
+        self.btn_track_text = QPushButton(""存文"")
+        self.btn_track_text.setFixedSize(40, 28)
+        self.btn_track_text.setCheckable(True)
+        self.btn_track_text.setCursor(Qt.PointingHandCursor)
+        self.btn_track_text.setToolTip(""开启/暂停文字监听"")
+        self.btn_track_text.setStyleSheet(""QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #4CAF50; color: white; border-color: #45a049; }"")
+        self.btn_track_text.clicked.connect(self.toggle_text_tracking_clicked.emit)
+        
+        self.btn_track_image = QPushButton(""存图"")
+        self.btn_track_image.setFixedSize(40, 28)
+        self.btn_track_image.setCheckable(True)
+        self.btn_track_image.setCursor(Qt.PointingHandCursor)
+        self.btn_track_image.setToolTip(""开启/暂停图片监听"")
+        self.btn_track_image.setStyleSheet(""QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #2196F3; color: white; border-color: #1E88E5; }"")
+        self.btn_track_image.clicked.connect(self.toggle_image_tracking_clicked.emit)
+        
+        title = QLabel(""剪贴板历史"")
+        title.setStyleSheet(""font-weight: bold; font-size: 14px; color: #333;"")
+        
+        btn_close = QPushButton(""×"")
+        btn_close.setFixedSize(24, 24)
+        btn_close.setStyleSheet(""QPushButton { background-color: transparent; border: none; color: #777; font-weight: bold; font-size: 18px; } QPushButton:hover { color: #ff0000; }"")
+        btn_close.clicked.connect(self.hide)
+        
+        title_layout.addWidget(self.btn_track_text)
+        title_layout.addWidget(self.btn_track_image)
+        title_layout.addStretch()
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(btn_close)
+        layout.addLayout(title_layout)
+        self.list_widget = ClipboardListWidget()
+        self.list_widget.setStyleSheet(""QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }"")
+        self.list_widget.itemClicked.connect(self._on_item_clicked)
+        self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
+        self.list_widget.order_changed.connect(self.history_reordered.emit)
+        
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.btn_filter_text = QPushButton(""看文"")
+        self.btn_filter_text.setCheckable(True)
+        self.btn_filter_text.setChecked(True)
+        self.btn_filter_text.setToolTip(""显示/隐藏文本记录"")
+        self.btn_filter_text.setStyleSheet(""QPushButton { background-color: #e0e0e0; color: #333; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:checked { background-color: #4CAF50; color: white; }"")
+ 
+... [truncated]",""
+"Class:ui/notebook.py:NotebookPanel","NotebookPanel","ui/notebook.py",6,131,true,"from PySide6.QtGui import QClipboard, QMouseEvent, QTextOption
+
+class NotebookPanel(QWidget):
+    content_changed = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+        self._is_dragging = False
+        self._drag_start_pos = None
+        self._relative_offset = None
+        self._main_ball = None
+        self.init_ui()
+
+    def set_main_ball(self, ball):
+        self._main_ball = ball
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPos() - self._drag_start_pos)
+            if self._main_ball:
+                self._relative_offset = (self.x() - self._main_ball.x(), self.y() - self._main_ball.y())
+            event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            event.accept()
+
+    def init_ui(self):
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"")
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setFixedSize(320, 420)
+        self.setStyleSheet(""background-color: #f6f7fb; border: 1px solid #d8dbe6; border-radius: 12px; color: #000000;"")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
+        
+        title_layout = QHBoxLayout()
+        title = QLabel(""悬浮记事本"")
+        title.setStyleSheet(""font-weight: bold; font-size: 14px; color: #111827;"")
+        btn_close = QPushButton(""✖"")
+        btn_close.setFixedSize(20, 20)
+        btn_close.setStyleSheet(""QPushButton { background-color: transparent; border: none; color: #6b7280; font-weight: bold; font-size: 14px; } QPushButton:hover { color: #ef4444; }"")
+        btn_close.clicked.connect(self.hide)
+        
+        title_layout.addStretch()
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        title_layout.addWidget(btn_close)
+        layout.addLayout(title_layout)
+        
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self.text_edit.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text_edit.setStyleSheet(""QTextEdit { border: 1px solid #d1d5db; background-color: white; color: #000000; padding: 10px; border-radius: 8px; font-size: 14px; selection-background-color: #bfdbfe; }"")
+        self.text_edit.textChanged.connect(self._on_text_changed)
+        layout.addWidget(self.text_edit)
+        
+        btn_layout = QHBoxLayout()
+        self.btn_copy = QPushButton(""复制全部"")
+        self.btn_copy.setStyleSheet(""QPushButton { background-color: #2563eb; color: white; border-radius: 6px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #1d4ed8; }"")
+        self.btn_copy.clicked.connect(self._on_copy_clicked)
+        self.btn_clear = QPushButton(""清空"")
+        self.btn_clear.setStyleSheet(""QPushButton { background-color: #ef4444; color: white; border-radius: 6px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #dc2626; }"")
+        self.btn_clear.clicked.connect(self._on_clear_clicked)
+        btn_layout.addWidget(self.btn_copy)
+        btn_layout.addWidget(self.btn_clear)
+        layout.addLayout(btn_layout)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.hide()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def _on_text_changed(self):
+        self.content_changed.emit(self.text_edit.toPlainText())
+
+    def _on_copy_clicked(self):
+        QApplication.clipboard().setText(self.text_edit.toPlainText())
+
+    def _on_clear_clicked(self):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(""确认"")
+        msg_box.setText(""确定要清空记事本吗？"")
+        msg_box.setStyleSheet(""QMessageBox { background-color: #ffffff; color: #000000; } QLabel { color: #000000; } QPushButton { color: #000000; }"")
+        btn_yes = msg_box.addButton(""是"", QMessageBox.YesRole)
+        msg_box.addButton(""否"", QMessageBox.NoRole)
+        msg_box.exec()
+        if msg_box.clickedButton() == btn_yes:
+            self.text_edit.clear()
+
+    def set_content(self, text):
+        self.text_edit.blockSignals(True)
+        self.text_edit.setPlainText(text)
+        self.text_edit.blockSignals(False)
+
+    def update_position(self, ball_x, ball_y):
+        if self._relative_offset is None:
+            # Default to the left of the
+... [truncated]",""
+"Class:ui/floating_ball.py:FloatingBall","FloatingBall","ui/floating_ball.py",5,79,true,"from PySide6.QtGui import QMouseEvent, QPainter, QColor
+
+class FloatingBall(QWidget):
+    # Signal emitted when the ball is clicked
+    clicked = Signal()
+    right_clicked = Signal()
+    position_changed = Signal(int, int)
+
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        
+        # Variables for dragging
+        self._is_dragging = False
+        self._drag_start_pos = QPoint()
+        self._has_moved = False
+
+    def init_ui(self):
+        self.setWindowTitle(""\u684c\u9762\u4eba\u5076"")
+        # Frameless, topmost, tool (not in taskbar)
+        self.setWindowFlags(
+            Qt.FramelessWindowHint | 
+            Qt.WindowStaysOnTopHint | 
+            Qt.Tool
+        )
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        
+        # Fixed size
+        self.setFixedSize(60, 60)
+        
+        # Initial position: bottom right (offset a bit)
+        # We will position it when showing to avoid multiple screen issues
+        
+    def paintEvent(self, event):
+        from PySide6.QtGui import QRadialGradient
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Create a modern 3D-like radial gradient
+        gradient = QRadialGradient(self.width() / 3, self.height() / 3, self.width())
+        gradient.setColorAt(0, QColor(100, 180, 255, 230))
+        gradient.setColorAt(1, QColor(20, 100, 220, 210))
+        
+        painter.setBrush(gradient)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(0, 0, self.width(), self.height())
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = True
+            self._has_moved = False
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            self.right_clicked.emit()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            # Move the window
+            self.move(event.globalPos() - self._drag_start_pos)
+            self._has_moved = True
+            self.position_changed.emit(self.x(), self.y())
+            event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            if not self._has_moved:
+                self.clicked.emit()
+            event.accept()
+
+    def move_to_bottom_right(self):
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+        x = screen_geo.width() - self.width() - 50
+        y = screen_geo.height() - self.height() - 50
+        self.move(x, y)
+
+if __name__ == ""__main__"":
+",""
+"Class:system/tray.py:TrayIcon","TrayIcon","system/tray.py",4,152,true,"from PySide6.QtCore import Qt, QObject, Signal
+
+class TrayIcon(QObject):
+    quit_requested = Signal()
+    toggle_requested = Signal()
+    settings_requested = Signal()
+    about_requested = Signal()
+    toggle_hide_ball_when_screenshot_requested = Signal()
+    change_clipboard_max_items_requested = Signal(int)
+    toggle_clipboard_tracking_requested = Signal()
+    change_recent_max_items_requested = Signal(int)
+    toggle_recent_tracking_requested = Signal()
+    change_clipboard_record_text_requested = Signal(bool)
+    change_clipboard_record_image_requested = Signal(bool)
+    change_browser_path_requested = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tray = QSystemTrayIcon(self)
+        self.hide_ball_when_screenshot = True
+        self.clipboard_tracking_enabled = True
+        self.clipboard_record_text = True
+        self.clipboard_record_image = True
+        
+        self.tray.setIcon(self._create_dummy_icon())
+        self.tray.setToolTip(""\u60ac\u6d6e\u52a9\u624b"")
+
+        # Context Menu
+        self.menu = QMenu()
+
+        # 1. View / Control
+        self.action_toggle = QAction(""\u663e\u793a/\u9690\u85cf\u4e3b\u754c\u9762"", self) # 显示/隐藏主界面
+        self.action_toggle.triggered.connect(self.toggle_requested.emit)
+        self.menu.addAction(self.action_toggle)
+        self.menu.addSeparator()
+
+        # 2. Clipboard
+        self.action_clipboard_tracking = QAction(""\u76d1听剪贴板变化"", self) # 监听剪贴板变化
+        self.action_clipboard_tracking.setCheckable(True)
+        self.action_clipboard_tracking.setChecked(self.clipboard_tracking_enabled)
+        self.action_clipboard_tracking.triggered.connect(self._on_toggle_clipboard_tracking)
+        self.menu.addAction(self.action_clipboard_tracking)
+
+        self.action_clipboard_limit = QAction(""\u526a\u8d34\u677f历史容量..."", self) # 剪贴板历史容量...
+        self.action_clipboard_limit.triggered.connect(self._on_change_clipboard_limit)
+        self.menu.addAction(self.action_clipboard_limit)
+        self.menu.addSeparator()
+
+        # 2.5 Recent Files
+        self.action_recent_tracking = QAction(""监听最近使用变化"", self)
+        self.action_recent_tracking.setCheckable(True)
+        self.action_recent_tracking.setChecked(True)
+        self.action_recent_tracking.triggered.connect(self._on_toggle_recent_tracking)
+        self.menu.addAction(self.action_recent_tracking)
+
+        self.action_recent_limit = QAction(""最近使用最大条数..."", self)
+        self.action_recent_limit.triggered.connect(self._on_change_recent_limit)
+        self.menu.addAction(self.action_recent_limit)
+        self.menu.addSeparator()
+
+        # 3. Screenshot / Record
+        self.action_hide_ball = QAction(""\u622a屏时\u81ea动隐藏"", self) # 截屏时自动隐藏
+        self.action_hide_ball.setCheckable(True)
+        self.action_hide_ball.setChecked(self.hide_ball_when_screenshot)
+        self.action_hide_ball.triggered.connect(self._on_toggle_hide_ball)
+        self.menu.addAction(self.action_hide_ball)
+        self.menu.addSeparator()
+
+        # 4. Settings
+        self.action_settings = QAction(""\u8bbe\u7f6e..."", self) # 设置...
+        self.action_settings.triggered.connect(self.settings_requested.emit)
+        self.menu.addAction(self.action_settings)
+        self.menu.addSeparator()
+
+        # 5. System
+        self.action_about = QAction(""\u5173\u4e8e\u684c\u9762\u4eba\u5076"", self) # 关于桌面人偶
+        self.action_about.triggered.connect(self.about_requested.emit)
+        self.menu.addAction(self.action_about)
+        
+        self.action_quit = QAction(""\u9000\u51fa\u684c\u9762\u4eba\u5076"", self) # 退出桌面人偶
+        self.action_quit.triggered.connect(self.quit_requested.emit)
+        self.menu.addAction(self.action_quit)
+
+        self.tray.activated.connect(self._on_activated)
+    def _on_activated(self, reason):
+        # QSystemTrayIcon.Trigger \u901a\u5e38\u8868\u793a\u5de6\u952e\u5355\u51fb
+        if reason == QSystemTrayIcon.Trigger:
+            from PySide6.QtGui import QCursor
+            self.menu.exec(QCursor.pos())
+
+
+
+
+    def _on_toggle_hide_ball(self, checked):
+        self.hide_ball_when_screenshot = checked
+        self.toggle_hide_ball_when_screenshot_requested.emit()
+
+    def set_hide_ball_when_screenshot(self, checked):
+        self.hide_ball_when_screenshot = checked
+        self.action_hide_ball.setChecked(checked)
+
+    def _on_change_clipboard_limit(self):
+        # We need the current limit value. Fallback to 20 if not set as instance var
+        current = getattr(self, 'clipboard_max_items', 20)
+        value, ok = QInputDialog.getInt(None, ""\u8bbe\u7f6e\u526a\u8d34\u677f\u6700\u5927\u6761\u6570"", ""\u8bf7\u8f93\u5165\u6700\u591a\u4fdd\u5b58\u6761\u6570\uff1a"", current, 1, 999, 1)
+        if ok:
+            self.change_clipboard_max_items_requested.emit(value)
+
+    def _on_toggle_clipboard_tracking(self, checked):
+        self.clipboard_tracking_enabled = c
+... [truncated]",""
+"Class:core/screen_recorder.py:ScreenRecorderThread","ScreenRecorderThread","core/screen_recorder.py",10,99,true,"import win32con
+
+class ScreenRecorderThread(QThread):
+    finished_recording = Signal(str)
+    error_occurred = Signal(str)
+    
+    def __init__(self, rect: QRect, save_dir: str, save_format: str = ""mp4""):
+        super().__init__()
+        self.rect = rect
+        self.save_dir = save_dir
+        self.save_format = save_format.lower()
+        self._running = False
+        
+    def stop(self):
+        self._running = False
+        
+    def run(self):
+        self._running = True
+        try:
+            if not os.path.exists(self.save_dir):
+                os.makedirs(self.save_dir, exist_ok=True)
+                
+            ext = self.save_format
+            if ext not in [""mp4"", ""webm""]:
+                ext = ""mp4""
+                
+            filename = datetime.now().strftime(f""录屏_%Y%m%d_%H%M%S.{ext}"")
+            filepath = os.path.join(self.save_dir, filename)
+            
+            v_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+            v_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+            
+            # self.rect is in global physical coordinates
+            left = self.rect.x() - v_left
+            top = self.rect.y() - v_top
+            width = self.rect.width()
+            height = self.rect.height()
+            
+            # Ensure even dimensions for cv2
+            if width % 2 != 0:
+                width -= 1
+            if height % 2 != 0:
+                height -= 1
+                
+            monitor = {
+                ""left"": left,
+                ""top"": top,
+                ""width"": width,
+                ""height"": height
+            }
+            
+            if ext == ""webm"":
+                fourcc = cv2.VideoWriter_fourcc(*'VP80')
+                fps = 20.0
+                out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
+            else:
+                # Try H264 via Media Foundation backend
+                fourcc = cv2.VideoWriter_fourcc(*'H264')
+                fps = 20.0
+                out = cv2.VideoWriter(filepath, cv2.CAP_MSMF, fourcc, fps, (width, height))
+                
+                # Fallback to standard MP4v if H264 fails to initialize
+                if not out.isOpened():
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                    out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
+            
+            if not out.isOpened():
+                self.error_occurred.emit(""无法初始化视频写入器"")
+                return
+                
+            sct = mss.mss()
+            frame_time = 1.0 / fps
+            
+            while self._running:
+                start_time = time.time()
+                
+                sct_img = sct.grab(monitor)
+                img = np.array(sct_img)
+                # Convert BGRA to BGR
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                out.write(img)
+                
+                elapsed = time.time() - start_time
+                sleep_time = frame_time - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+                    
+            out.release()
+            self.finished_recording.emit(filepath)
+            
+        except Exception as e:
+            self.error_occurred.emit(str(e))
+",""
+"Class:core/recent.py:RecentManager","RecentManager","core/recent.py",9,197,true,"HISTORY_FILE = os.path.join(get_base_dir(), ""recent_history.json"")
+
+class RecentManager(QObject):
+    items_changed = Signal(list)
+
+    def __init__(self, max_items=30, parent=None):
+        super().__init__(parent)
+        self.max_items = max_items
+        self.tracking_enabled = True
+        self.excluded_extensions = set()
+        
+        ensure_windows_recent_tracking_enabled()
+        
+        self.history = self._load_history()
+        
+        self.poll_timer = QTimer(self)
+        self.poll_timer.timeout.connect(self.tick_scan)
+        self.poll_timer.start(2000) # Poll every 2 seconds
+        
+        self._last_scan_mtime = {} # path -> mtime
+
+    def set_tracking_enabled(self, enabled):
+        was_enabled = self.tracking_enabled
+        self.tracking_enabled = enabled
+        if enabled and not was_enabled:
+            self.tick_scan(silent=True)
+
+    def set_excluded_extensions(self, exts):
+        if isinstance(exts, list):
+            self.excluded_extensions = {self._normalize_ext(e): True for e in exts if e.strip()}
+        else:
+            self.excluded_extensions = {self._normalize_ext(k): v for k, v in exts.items() if k.strip()}
+        self._purge_excluded()
+
+    def _normalize_ext(self, ext):
+        ext = ext.strip().lower()
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        return ext
+
+    def _purge_excluded(self):
+        changed = False
+        new_history = []
+        for item in self.history:
+            if not self.excluded_extensions.get(item.get(""ext""), False):
+                new_history.append(item)
+            else:
+                changed = True
+        if changed:
+            self.history = new_history
+            self._save_history()
+            self.items_changed.emit(self.history)
+
+    def _load_history(self):
+        if not os.path.exists(HISTORY_FILE):
+            return []
+        try:
+            with open(HISTORY_FILE, ""r"", encoding=""utf-8"") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _save_history(self):
+        try:
+            with open(HISTORY_FILE, ""w"", encoding=""utf-8"") as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=4)
+        except Exception:
+            pass
+
+    def tick_scan(self, silent=False):
+        if not self.tracking_enabled and not silent:
+            return
+            
+        changed = False
+        
+        try:
+            lnk_paths = list_recent_lnk_files()
+        except Exception:
+            lnk_paths = []
+
+        # Take the top N recent shortcuts to process
+        for lnk in lnk_paths[:50]:
+            try:
+                mtime = os.path.getmtime(lnk)
+            except Exception:
+                continue
+                
+            if self._last_scan_mtime.get(lnk) == mtime:
+                continue
+            self._last_scan_mtime[lnk] = mtime
+            
+            if silent:
+                continue
+            
+            target = resolve_lnk_target(lnk)
+            if not target or not os.path.exists(target):
+                continue
+                
+            if is_directory_target(target):
+                continue
+                
+            _, ext = os.path.splitext(target)
+            ext = self._normalize_ext(ext)
+            
+            if self.excluded_extensions.get(ext, False):
+                continue
+                
+            # Add to history
+            name = os.path.basename(target)
+            
+            # Deduplicate
+            existing_idx = -1
+            for i, item in enumerate(self.history):
+                if item.get(""path"") == target:
+                    existing_idx = i
+                    break
+                    
+            new_item = {
+                ""path"": target,
+                ""name"": name,
+                ""ext"": ext,
+                ""is_app"": ext == "".exe"",
+                ""last_seen"": time.time()
+            }
+            
+            if existing_idx >= 0:
+                self.history.pop(existing_idx)
+            
+            self.history.insert(0, new_item)
+            changed = True
+            
+        if changed:
+            if len(self.history) > self.max_items:
+                self.history = self.history[:self.max_items]
+            self._save_history()
+            self.items_changed.emit(self.history)
+
+    def clean_missing_files(self):
+        changed = False
+        new_history = []
+        for item in self.history:
+            if os.path.exists(item.get(""path"", """")):
+                new_history.append(item)
+            else:
+                changed = True
+                
+        if changed:
+            self.history = new_history
+            self._save_history()
+            self.items_changed.emit(self.history)
+
+    def clear_history(self):
+        if self.history:
+            self.history.clear()
+            self._save_history()
+            self.items_changed.emit(self.history)
+
+    def remove_item(self, item_to_remove):
+        path = item_to_remo
+... [truncated]",""
+"Class:core/notebook.py:NotebookManager","NotebookManager","core/notebook.py",6,42,true,"NOTEBOOK_FILE = ""notebook.json""
+
+class NotebookManager(QObject):
+    content_loaded = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.content = """"
+        
+        # 防抖定时器：800ms
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(800)
+        self._save_timer.timeout.connect(self._save_to_disk)
+        
+        self.load_content()
+
+    def load_content(self):
+        if os.path.exists(NOTEBOOK_FILE):
+            try:
+                with open(NOTEBOOK_FILE, ""r"", encoding=""utf-8"") as f:
+                    data = json.load(f)
+                    self.content = data.get(""content"", """")
+            except Exception as e:
+                print(f""Failed to load notebook: {e}"")
+        self.content_loaded.emit(self.content)
+        return self.content
+
+    def update_content(self, text):
+        self.content = text
+        # 每次文本改变，重新开始计时（防抖机制）
+        self._save_timer.start()
+
+    def _save_to_disk(self):
+        try:
+            with open(NOTEBOOK_FILE, ""w"", encoding=""utf-8"") as f:
+                json.dump({""content"": self.content}, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f""Failed to save notebook: {e}"")
+",""
+"Class:core/hotkey.py:HotkeyManager","HotkeyManager","core/hotkey.py",5,70,true,"from core.screenshot import get_all_visible_rects
+
+class HotkeyManager(QObject):
+    action_triggered = Signal(str, object, object)
+
+    def __init__(self, hotkeys=None, parent=None):
+        super().__init__(parent)
+        self.hotkeys = hotkeys or {} # e.g. {""clipboard"": ""ctrl+shift+v"", ""screenshot"": ""win+shift+s""}
+        self._registered_hotkeys = {}
+        self.paused = False # map name to actual hotkey string registered
+        
+        for name, key in self.hotkeys.items():
+            self.register_hotkey(name, key)
+
+    def register_hotkey(self, name, key):
+        if not key:
+            return False
+            
+        try:
+            # register with keyboard
+            def cb(n=name):
+                if getattr(self, 'paused', False):
+                    return
+                payload_img = None
+                payload_rects = None
+                if n == ""smart_screenshot"":
+                    try:
+                        payload_img = ImageGrab.grab(all_screens=True)
+                        payload_rects = get_all_visible_rects()
+                    except Exception:
+                        pass
+                self.action_triggered.emit(n, payload_img, payload_rects)
+                
+            keyboard.add_hotkey(key, cb, suppress=False)
+            self._registered_hotkeys[name] = key
+            self.hotkeys[name] = key
+            return True
+        except Exception as e:
+            print(f""Failed to register hotkey {key} for {name}: {e}"")
+            return False
+
+    def update_hotkey(self, name, new_key):
+        # unregister old
+        old_key = self._registered_hotkeys.get(name)
+        if old_key:
+            try:
+                keyboard.remove_hotkey(old_key)
+            except Exception:
+                pass
+            del self._registered_hotkeys[name]
+        
+        # register new
+        if new_key:
+            return self.register_hotkey(name, new_key)
+        else:
+            self.hotkeys[name] = """"
+            return True
+
+    def unregister_hotkey(self, name):
+        old_key = self._registered_hotkeys.get(name)
+        if old_key:
+            try:
+                keyboard.remove_hotkey(old_key)
+            except Exception:
+                pass
+            self._registered_hotkeys.pop(name, None)
+        self.hotkeys[name] = """"
+        return True
+",""
+"Class:core/clipboard.py:ClipboardManager","ClipboardManager","core/clipboard.py",12,322,true,"HISTORY_FILE = os.path.join(get_base_dir(), ""history.json"")
+
+class ClipboardManager(QObject):
+    # Emits when a new valid text is added to the history
+    history_changed = Signal(list)
+
+    def __init__(self, max_items=20, parent=None):
+        super().__init__(parent)
+        self.max_items = max_items
+        self.history = self._load_history()
+        self._clipboard = QApplication.clipboard()
+        self.tracking_enabled = True
+        self.record_text = True
+        self.record_image = True
+        self.picture_save_path = """"
+        self.max_images = 20
+        
+        # Connect to clipboard data change signal
+        self._clipboard.dataChanged.connect(self._on_clipboard_changed)
+        
+        # Debounce timer for image clipboard changes
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(200)  # 200ms debounce
+        self._debounce_timer.timeout.connect(self._process_clipboard)
+        
+        # Flag to prevent reading what we just wrote programmatically
+        self.ignore_next = False
+        self.last_text = None
+        self.last_text_at = 0.0
+        self.text_dedupe_window = 1.0
+
+    def _load_history(self):
+        if not os.path.exists(HISTORY_FILE):
+            return []
+        try:
+            with open(HISTORY_FILE, ""r"", encoding=""utf-8"") as f:
+                raw = json.load(f)
+                return self._dedupe_history(self._normalize_history(raw))
+        except Exception as e:
+            print(f""Failed to load history: {e}"")
+            return []
+
+    def _normalize_text_key(self, text):
+        import unicodedata
+        import re
+        text = text or """"
+        # 剥离行首的常见序号和列表符号 (如 ""1. "", ""(一)"", ""- "", ""* "")
+        pattern = r'(?m)^\s*(?:[\(（]?(?:[\d]+|[a-zA-Z]|[一二三四五六七八九十百千万]+)[.\)）\]、](?!\d)\s*|[•·*+\-]\s*)'
+        text = re.sub(pattern, '', text)
+        
+        text = unicodedata.normalize(""NFKC"", text)
+        return """".join(ch for ch in text if unicodedata.category(ch)[0] not in {""Z"", ""C""})
+
+    def _dedupe_history(self, history):
+        deduped = []
+        seen_text = set()
+        seen_image = set()
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            if item.get(""type"") == ""text"":
+                key = self._normalize_text_key(item.get(""value"", """"))
+                if key in seen_text:
+                    continue
+                seen_text.add(key)
+                deduped.append(item)
+            elif item.get(""type"") == ""image"":
+                key = item.get(""value"", """")
+                if key in seen_image:
+                    continue
+                seen_image.add(key)
+                deduped.append(item)
+        return deduped
+
+    def _normalize_history(self, raw_history):
+        if not isinstance(raw_history, list):
+            return []
+
+        normalized = []
+        for item in raw_history:
+            if isinstance(item, dict) and item.get(""type"") in {""text"", ""image""}:
+                normalized.append(item)
+            elif isinstance(item, str):
+                normalized.append({""type"": ""text"", ""value"": item})
+        return normalized
+
+    def _save_history(self):
+        try:
+            with open(HISTORY_FILE, ""w"", encoding=""utf-8"") as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f""Failed to save history: {e}"")
+
+    def _on_clipboard_changed(self, mode=QClipboard.Clipboard):
+        if mode != QClipboard.Clipboard:
+            return
+            
+        if not self.tracking_enabled:
+            return
+            
+        if self.ignore_next:
+            self.ignore_next = False
+            return
+            
+        # Restart the debounce timer. If multiple changes arrive rapidly (like a screenshot),
+        # only the last one will trigger the processing.
+        self._debounce_timer.start()
+
+    def _process_clipboard(self):
+        mime_data = self._clipboard.mimeData()
+        if mime_data.hasUrls():
+            # Windows Explorer file copy often exposes file URLs and may also
+            # include the file path as text. Ignore these payloads entirely so
+            # copied files do not pollute the clipboard history.
+            return
+        if mime_data.hasImage() and self.record_image:
+            image = self._clipboard.image()
+            if not image.isNull():
+                import hashlib
+                img_data = image.bits().tobytes()
+                img_hash = hashlib.md5(img_data).hexdigest()
+                if getattr(self, ""last_image_hash"", None) == img_hash:
+                    return
+                self.last_image_hash = img_hash
+                self.add_image_item(image)
+        elif mime_data.hasText() and self.record_text:
+            text = mime_data.text().strip().replace('\r\n', '\n').replace('\r', '\n')
+... [truncated]",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:GOpaque","GOpaque","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",44,104,true,"
+@register('cv2')
+class GOpaque():
+    # NB: Inheritance from c++ class cause segfault.
+    # So just aggregate cv.GOpaqueT instead of inheritance
+    def __new__(cls, argtype):
+        return cv.GOpaqueT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_ANY)
+
+@register('cv2')
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Bool","Bool","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",50,52,true,"        return cv.GOpaqueT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Int","Int","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",54,56,true,"            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Int64","Int64","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",58,60,true,"            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:UInt64","UInt64","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",62,64,true,"            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Double","Double","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",66,68,true,"            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Float","Float","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",70,72,true,"            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:String","String","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",74,76,true,"            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Point","Point","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",78,80,true,"            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Point2f","Point2f","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",82,84,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Point3f","Point3f","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",86,88,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Size","Size","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",90,92,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Rect","Rect","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",94,96,true,"            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Prim","Prim","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",98,100,true,"            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Any","Any","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",102,104,true,"            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_ANY)
+
+@register('cv2')
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:GArray","GArray","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",107,179,true,"
+@register('cv2')
+class GArray():
+    # NB: Inheritance from c++ class cause segfault.
+    # So just aggregate cv.GArrayT instead of inheritance
+    def __new__(cls, argtype):
+        return cv.GArrayT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_RECT)
+
+    class Scalar():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_GMAT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GArray(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GArray(cv.gapi.CV_ANY)
+
+
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Scalar","Scalar","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",161,163,true,"            return cv.GArrayT(cv.gapi.CV_RECT)
+
+    class Scalar():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:Mat","Mat","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",165,167,true,"            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py:GMat","GMat","桌面人偶_简洁版_Release/_internal/cv2/gapi/__init__.py",169,171,true,"            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_GMAT)
+
+    class Prim():
+",""
+"Class:桌面人偶_简洁版_Release/_internal/cv2/mat_wrapper/__init__.py:Mat","Mat","桌面人偶_简洁版_Release/_internal/cv2/mat_wrapper/__init__.py",15,34,true,"
+
+class Mat(_NumPyArrayNumeric):
+    '''
+    cv.Mat wrapper for numpy array.
+
+    Stores extra metadata information how to interpret and process of numpy array for underlying C++ code.
+    '''
+
+    def __new__(cls, arr, **kwargs):
+        obj = arr.view(Mat)
+        return obj
+
+    def __init__(self, arr, **kwargs):
+        self.wrap_channels = kwargs.pop('wrap_channels', getattr(arr, 'wrap_channels', False))
+        if len(kwargs) > 0:
+            raise TypeError('Unknown parameters: {}'.format(repr(kwargs)))
+
+    def __array_finalize__(self, obj):
+        if obj is None:
+            return
+        self.wrap_channels = getattr(obj, 'wrap_channels', None)
+
+
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:GOpaque","GOpaque","桌面人偶_Release/_internal/cv2/gapi/__init__.py",44,104,true,"
+@register('cv2')
+class GOpaque():
+    # NB: Inheritance from c++ class cause segfault.
+    # So just aggregate cv.GOpaqueT instead of inheritance
+    def __new__(cls, argtype):
+        return cv.GOpaqueT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_ANY)
+
+@register('cv2')
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Bool","Bool","桌面人偶_Release/_internal/cv2/gapi/__init__.py",50,52,true,"        return cv.GOpaqueT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Int","Int","桌面人偶_Release/_internal/cv2/gapi/__init__.py",54,56,true,"            return cv.GOpaqueT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Int64","Int64","桌面人偶_Release/_internal/cv2/gapi/__init__.py",58,60,true,"            return cv.GOpaqueT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:UInt64","UInt64","桌面人偶_Release/_internal/cv2/gapi/__init__.py",62,64,true,"            return cv.GOpaqueT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Double","Double","桌面人偶_Release/_internal/cv2/gapi/__init__.py",66,68,true,"            return cv.GOpaqueT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Float","Float","桌面人偶_Release/_internal/cv2/gapi/__init__.py",70,72,true,"            return cv.GOpaqueT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:String","String","桌面人偶_Release/_internal/cv2/gapi/__init__.py",74,76,true,"            return cv.GOpaqueT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Point","Point","桌面人偶_Release/_internal/cv2/gapi/__init__.py",78,80,true,"            return cv.GOpaqueT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Point2f","Point2f","桌面人偶_Release/_internal/cv2/gapi/__init__.py",82,84,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Point3f","Point3f","桌面人偶_Release/_internal/cv2/gapi/__init__.py",86,88,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Size","Size","桌面人偶_Release/_internal/cv2/gapi/__init__.py",90,92,true,"            return cv.GOpaqueT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Rect","Rect","桌面人偶_Release/_internal/cv2/gapi/__init__.py",94,96,true,"            return cv.GOpaqueT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Prim","Prim","桌面人偶_Release/_internal/cv2/gapi/__init__.py",98,100,true,"            return cv.GOpaqueT(cv.gapi.CV_RECT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Any","Any","桌面人偶_Release/_internal/cv2/gapi/__init__.py",102,104,true,"            return cv.GOpaqueT(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GOpaqueT(cv.gapi.CV_ANY)
+
+@register('cv2')
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:GArray","GArray","桌面人偶_Release/_internal/cv2/gapi/__init__.py",107,179,true,"
+@register('cv2')
+class GArray():
+    # NB: Inheritance from c++ class cause segfault.
+    # So just aggregate cv.GArrayT instead of inheritance
+    def __new__(cls, argtype):
+        return cv.GArrayT(argtype)
+
+    class Bool():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_BOOL)
+
+    class Int():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_INT)
+
+    class Int64():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_INT64)
+
+    class UInt64():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_UINT64)
+
+    class Double():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_DOUBLE)
+
+    class Float():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_FLOAT)
+
+    class String():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_STRING)
+
+    class Point():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT)
+
+    class Point2f():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT2F)
+
+    class Point3f():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_POINT3F)
+
+    class Size():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SIZE)
+
+    class Rect():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_RECT)
+
+    class Scalar():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_GMAT)
+
+    class Prim():
+        def __new__(self):
+            return cv.GArray(cv.gapi.CV_DRAW_PRIM)
+
+    class Any():
+        def __new__(self):
+            return cv.GArray(cv.gapi.CV_ANY)
+
+
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Scalar","Scalar","桌面人偶_Release/_internal/cv2/gapi/__init__.py",161,163,true,"            return cv.GArrayT(cv.gapi.CV_RECT)
+
+    class Scalar():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:Mat","Mat","桌面人偶_Release/_internal/cv2/gapi/__init__.py",165,167,true,"            return cv.GArrayT(cv.gapi.CV_SCALAR)
+
+    class Mat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+",""
+"Class:桌面人偶_Release/_internal/cv2/gapi/__init__.py:GMat","GMat","桌面人偶_Release/_internal/cv2/gapi/__init__.py",169,171,true,"            return cv.GArrayT(cv.gapi.CV_MAT)
+
+    class GMat():
+        def __new__(self):
+            return cv.GArrayT(cv.gapi.CV_GMAT)
+
+    class Prim():
+",""
+"Class:桌面人偶_Release/_internal/cv2/mat_wrapper/__init__.py:Mat","Mat","桌面人偶_Release/_internal/cv2/mat_wrapper/__init__.py",15,34,true,"
+
+class Mat(_NumPyArrayNumeric):
+    '''
+    cv.Mat wrapper for numpy array.
+
+    Stores extra metadata information how to interpret and process of numpy array for underlying C++ code.
+    '''
+
+    def __new__(cls, arr, **kwargs):
+        obj = arr.view(Mat)
+        return obj
+
+    def __init__(self, arr, **kwargs):
+        self.wrap_channels = kwargs.pop('wrap_channels', getattr(arr, 'wrap_channels', False))
+        if len(kwargs) > 0:
+            raise TypeError('Unknown parameters: {}'.format(repr(kwargs)))
+
+    def __array_finalize__(self, obj):
+        if obj is None:
+            return
+        self.wrap_channels = getattr(obj, 'wrap_channels', None)
+
+
+",""
