@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt, QObject, Signal
 class TrayIcon(QObject):
     quit_requested = Signal()
     toggle_requested = Signal()
+    toggle_panels_requested = Signal()
     settings_requested = Signal()
     about_requested = Signal()
     toggle_hide_ball_when_screenshot_requested = Signal()
@@ -31,9 +32,13 @@ class TrayIcon(QObject):
         self.menu = QMenu()
 
         # 1. View / Control
-        self.action_toggle = QAction("\u663e\u793a/\u9690\u85cf\u4e3b\u754c\u9762", self) # 显示/隐藏主界面
+        self.action_toggle = QAction("\u663e\u793a/\u9690\u85cf\u60ac\u6d6e\u7403", self) # 显示/隐藏悬浮球
         self.action_toggle.triggered.connect(self.toggle_requested.emit)
         self.menu.addAction(self.action_toggle)
+
+        self.action_toggle_panels = QAction("显示/隐藏所有面板", self)
+        self.action_toggle_panels.triggered.connect(self.toggle_panels_requested.emit)
+        self.menu.addAction(self.action_toggle_panels)
         self.menu.addSeparator()
 
         # 2. Clipboard

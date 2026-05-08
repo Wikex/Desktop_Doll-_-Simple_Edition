@@ -181,6 +181,7 @@ class FloatingAssistant:
         self.tray.quit_requested.connect(self.quit_app)
         self.tray.about_requested.connect(self.show_about)
         self.tray.toggle_requested.connect(self.toggle_main_ball)
+        self.tray.toggle_panels_requested.connect(self.toggle_panels)
         self.tray.settings_requested.connect(self.prompt_settings)
         self.tray.toggle_hide_ball_when_screenshot_requested.connect(self.toggle_hide_ball_when_screenshot)
         self.tray.change_clipboard_max_items_requested.connect(self.set_clipboard_max_items)
@@ -650,12 +651,21 @@ class FloatingAssistant:
             self.ball.hide()
             for sb in self.sub_balls:
                 sb.hide()
-            self.panel.hide()
-            self.notebook_panel.hide()
-            self.search_panel.hide()
-            self.recent_panel.hide()
         else:
             self.ball.show()
+
+    def toggle_panels(self):
+        panels = [self.panel, self.notebook_panel, self.search_panel, self.recent_panel]
+        any_visible = any(p.isVisible() for p in panels)
+        if any_visible:
+            self._visible_panels = [p for p in panels if p.isVisible()]
+            for p in panels:
+                p.hide()
+        else:
+            if hasattr(self, '_visible_panels') and self._visible_panels:
+                for p in self._visible_panels:
+                    p.show()
+                self._visible_panels = []
 
     def prompt_settings(self):
         from ui.settings import SettingsDialog
@@ -797,6 +807,8 @@ class FloatingAssistant:
             self.on_notebook_ball_clicked()
         elif action_name == "toggle_ball":
             self.toggle_main_ball()
+        elif action_name == "toggle_panels":
+            self.toggle_panels()
         elif action_name == "record":
             self.on_record_ball_clicked()
         elif action_name == "search":

@@ -401,9 +401,10 @@ class SettingsDialog(QDialog):
         self.clipboard_row = HotkeyRow("clipboard", "显示/隐藏剪贴板:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
         self.recent_row = HotkeyRow("recent", "显示/隐藏最近使用:", self.current_hotkeys.get("recent", ""))
         self.toggle_ball_row = HotkeyRow("toggle_ball", "显示/隐藏悬浮球:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
+        self.toggle_panels_row = HotkeyRow("toggle_panels", "显示/隐藏所有面板:", self.current_hotkeys.get("toggle_panels", ""))
         
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row, self.search_row, 
-                    self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row]:
+                    self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row, self.toggle_panels_row]:
             row.text_changed.connect(self.on_hotkey_changed)
             row.focus_in.connect(lambda: setattr(self.hotkey_mgr, 'paused', True))
             row.focus_out.connect(lambda: setattr(self.hotkey_mgr, 'paused', False))

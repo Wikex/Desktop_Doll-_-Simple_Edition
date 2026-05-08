@@ -10,6 +10,7 @@ DEFAULT_HOTKEYS = {
     "smart_screenshot": "ctrl+shift+s",
     "notebook": "ctrl+shift+n",
     "toggle_ball": "ctrl+shift+b",
+    "toggle_panels": "",
     "record": "ctrl+shift+r",
     "search": "ctrl+shift+f",
     "recent": ""
