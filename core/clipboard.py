@@ -306,6 +306,10 @@ class ClipboardManager(QObject):
                 except:
                     pass
             if not image.isNull():
+                import hashlib
+                img_data = image.bits().tobytes()
+                self.last_image_hash = hashlib.md5(img_data).hexdigest()
+                
                 self._clipboard.setImage(image)
                 QTimer.singleShot(50, lambda: keyboard.send("ctrl+v"))
             else:
@@ -313,6 +317,9 @@ class ClipboardManager(QObject):
         else:
             text = item.get("value", "") if isinstance(item, dict) else str(item)
             html = item.get("html", None) if isinstance(item, dict) else None
+            
+            self.last_normalized_text = self._normalize_text_key(text)
+            self.last_text_at = time.monotonic()
             
             from PySide6.QtCore import QMimeData
             mime = QMimeData()
