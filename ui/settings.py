@@ -808,7 +808,7 @@ class SettingsDialog(QDialog):
     def _open_recent_excluded_dialog(self):
         from ui.recent_dialogs import ExcludedExtensionsDialog
         current_excluded = self.current_options.get("recent_excluded_extensions", {})
-        dialog = ExcludedExtensionsDialog(current_excluded)
+        dialog = ExcludedExtensionsDialog(current_excluded, self)
         if dialog.exec() == ExcludedExtensionsDialog.Accepted:
             new_excluded = dialog.get_excluded_extensions()
             self.current_options["recent_excluded_extensions"] = new_excluded

@@ -5,8 +5,8 @@ from PySide6.QtCore import Qt
 class ExcludedExtensionsDialog(QDialog):
     def __init__(self, excluded_extensions, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("排除记录")
-        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle("排除记录 - 桌面人偶")
+        # Removing Qt.Window to see if standard QDialog behavior works better with parent
         self.setFixedSize(320, 400)
         self.setStyleSheet("QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }")
         
@@ -121,7 +121,7 @@ class ExtensionFilterDialog(QDialog):
     def __init__(self, unique_extensions, visible_extensions_dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("查看")
-        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
+        # Ensure it inherits the parent's DPI correctly
         self.setFixedSize(300, 400)
         self.setStyleSheet("QDialog { background: white; } QLabel { color: #334155; font-size: 14px; }")
         

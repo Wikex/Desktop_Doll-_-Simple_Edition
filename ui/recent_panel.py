@@ -215,7 +215,7 @@ class RecentPanel(QWidget):
         self._apply_filter()
 
     def _on_excluded_clicked(self):
-        dialog = ExcludedExtensionsDialog(self._excluded_extensions)
+        dialog = ExcludedExtensionsDialog(self._excluded_extensions, self)
         if dialog.exec() == ExcludedExtensionsDialog.Accepted:
             new_exts = dialog.get_excluded_extensions()
             self._excluded_extensions = new_exts
@@ -223,7 +223,7 @@ class RecentPanel(QWidget):
 
     def _on_filter_clicked(self):
         unique_exts = set(item.get("ext", "") for item in self._current_items)
-        dialog = ExtensionFilterDialog(unique_exts, self._visibility_dict)
+        dialog = ExtensionFilterDialog(unique_exts, self._visibility_dict, self)
         if dialog.exec() == ExtensionFilterDialog.Accepted:
             new_dict = dialog.get_visibility_dict()
             self._visibility_dict = new_dict
