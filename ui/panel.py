@@ -249,6 +249,7 @@ class ClipboardItemWidget(QWidget):
 class ClipboardListWidget(QListWidget):
     order_changed = Signal(list)
     item_right_clicked = Signal(object)
+    item_ctrl_left_clicked = Signal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setDragDropMode(QAbstractItemView.InternalMove)
@@ -264,12 +265,16 @@ class ClipboardListWidget(QListWidget):
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
         item = self.itemAt(event.pos())
-        if item and event.button() == Qt.RightButton:
-            self.item_right_clicked.emit(item)
+        if item:
+            if event.button() == Qt.RightButton:
+                self.item_right_clicked.emit(item)
+            elif event.button() == Qt.LeftButton and (event.modifiers() & Qt.ControlModifier):
+                self.item_ctrl_left_clicked.emit(item)
 
 class Panel(QWidget):
     item_clicked = Signal(object)
     item_right_clicked = Signal(object)
+    item_ctrl_left_clicked = Signal(object)
     item_deleted = Signal(object)
     viewed = Signal(object)
     history_cleared = Signal(str)
@@ -355,6 +360,7 @@ class Panel(QWidget):
         self.list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }")
         self.list_widget.itemClicked.connect(self._on_item_clicked)
         self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
+        self.list_widget.item_ctrl_left_clicked.connect(self._on_item_ctrl_left_clicked)
         self.list_widget.order_changed.connect(self.history_reordered.emit)
         
         bottom_layout = QHBoxLayout()
@@ -516,6 +522,10 @@ class Panel(QWidget):
     def _on_item_right_clicked(self, item):
         full_item = item.data(Qt.UserRole)
         QTimer.singleShot(10, lambda: self.item_right_clicked.emit(full_item))
+
+    def _on_item_ctrl_left_clicked(self, item):
+        full_item = item.data(Qt.UserRole)
+        QTimer.singleShot(10, lambda: self.item_ctrl_left_clicked.emit(full_item))
 
     def update_position(self, ball_x, ball_y):
         if self._relative_offset is None:

@@ -176,6 +176,7 @@ class FloatingAssistant:
         self.clipboard_mgr.history_changed.connect(self.panel.update_history)
         self.panel.item_clicked.connect(lambda item: self.clipboard_mgr.copy_to_clipboard(item, as_plain_text=False))
         self.panel.item_right_clicked.connect(self._on_clipboard_item_right_clicked)
+        self.panel.item_ctrl_left_clicked.connect(self._on_clipboard_item_ctrl_left_clicked)
         self.panel.item_deleted.connect(self.clipboard_mgr.remove_item)
         self.panel.history_cleared.connect(self.clipboard_mgr.clear_history)
         self.panel.history_reordered.connect(self.clipboard_mgr.set_history)
@@ -329,6 +330,17 @@ class FloatingAssistant:
                         print(f"Failed to open image folder: {e}")
         else:
             self.clipboard_mgr.copy_to_clipboard(item, as_plain_text=True)
+
+    def _on_clipboard_item_ctrl_left_clicked(self, item):
+        if not isinstance(item, dict) or item.get("type") != "image":
+            text = item.get("value", "") if isinstance(item, dict) else str(item)
+            import re
+            import webbrowser
+            urls = re.findall(r'(https?://[^\s]+)', text)
+            if urls:
+                webbrowser.open(urls[0])
+            else:
+                self.perform_web_search(text)
 
     def on_notebook_ball_clicked(self):
         ball_pos = self.notebook_ball.geometry()
