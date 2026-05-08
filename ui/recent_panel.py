@@ -54,11 +54,21 @@ class RecentListWidget(QListWidget):
 
     def dragEnterEvent(self, event):
         if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
             super().dragEnterEvent(event)
         else:
             event.ignore()
 
+    def dragMoveEvent(self, event):
+        if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
+            super().dragMoveEvent(event)
+        else:
+            event.ignore()
+
     def dropEvent(self, event):
+        if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
         super().dropEvent(event)
         new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
         self.order_changed.emit(new_order)
