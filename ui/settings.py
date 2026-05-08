@@ -170,9 +170,6 @@ class SettingsDialog(QDialog):
                 background-color: #f1f5f9;
                 color: #0f172a;
             }
-            QWidget {
-                color: #0f172a;
-            }
             QLabel {
                 color: #334155;
                 font-size: 14px;

@@ -325,7 +325,7 @@ class Panel(QWidget):
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
         self.setFixedSize(320, 420)
-        self.setStyleSheet("Panel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QWidget { color: #000000; }")
+        self.setStyleSheet("Panel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #000000; }")
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
