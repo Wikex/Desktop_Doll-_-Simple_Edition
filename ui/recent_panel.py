@@ -122,7 +122,11 @@ class RecentItemWidget(QWidget):
         
         path_label = QLabel()
         path_label.setStyleSheet("color: #666666; font-size: 11px; background: transparent;")
-        path_label.setToolTip(path)
+        
+        self.hover_timer = QTimer(self)
+        self.hover_timer.setSingleShot(True)
+        self.hover_timer.setInterval(800)
+        self.hover_timer.timeout.connect(self.show_hover_effect)
         
         from PySide6.QtGui import QFontMetrics
         name_fm = QFontMetrics(name_label.font())
@@ -139,6 +143,42 @@ class RecentItemWidget(QWidget):
         text_layout.addWidget(path_label)
         
         layout.addLayout(text_layout, 1)
+
+    def enterEvent(self, event):
+        self.hover_timer.start()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_timer.stop()
+        from PySide6.QtWidgets import QToolTip
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def show_hover_effect(self):
+        path = self.item_data.get("path", "")
+        if not path:
+            return
+            
+        ext = self.item_data.get("ext", "").lower()
+        from PySide6.QtWidgets import QToolTip
+        from PySide6.QtGui import QCursor
+        
+        if ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp'] and os.path.exists(path):
+            from PySide6.QtGui import QImage, QPixmap
+            from PySide6.QtCore import QBuffer, QIODevice
+            image = QImage(path)
+            if not image.isNull():
+                image = image.scaled(300, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                pixmap = QPixmap.fromImage(image)
+                buffer = QBuffer()
+                buffer.open(QIODevice.WriteOnly)
+                pixmap.save(buffer, "PNG")
+                img_b64 = buffer.data().toBase64().data().decode('utf-8')
+                html = f"<img src='data:image/png;base64,{img_b64}'><br>路径: {path}"
+                QToolTip.showText(QCursor.pos(), html, self)
+                return
+                
+        QToolTip.showText(QCursor.pos(), f"路径: {path}", self)
 
     def _on_delete_clicked(self):
         self.deleted.emit(self.item_data)
