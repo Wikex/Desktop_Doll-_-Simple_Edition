@@ -190,10 +190,18 @@ class ClipboardItemWidget(QWidget):
             
             layout.addWidget(img_container, 1)
         else:
+            import re
             from PySide6.QtGui import QFontMetrics
             self.label = QLabel()
-            self.full_tooltip_text = text
-            self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
+            
+            # Check if text contains URL to style it differently
+            if re.search(r'(https?://[^\s]+)', text):
+                self.label.setStyleSheet("color: #2563eb; font-size: 13px; background: transparent; text-decoration: underline;")
+                self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 直接打开网址)"
+            else:
+                self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
+                self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 快捷搜索此内容)"
+            
             
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
             display_text = display_text.replace('\n', '  ')
