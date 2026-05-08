@@ -31,6 +31,27 @@ class RecentListWidget(QListWidget):
             mime_data.setUrls(urls)
         return mime_data
 
+    def startDrag(self, supportedActions):
+        from PySide6.QtGui import QDrag
+        from PySide6.QtCore import QPoint
+        drag = QDrag(self)
+        
+        mime_data = self.mimeData(self.selectedItems())
+        drag.setMimeData(mime_data)
+        
+        selected = self.selectedItems()
+        if selected:
+            rect = self.visualItemRect(selected[0])
+            pixmap = self.viewport().grab(rect)
+            drag.setPixmap(pixmap)
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+            
+        action = drag.exec(supportedActions, Qt.CopyAction)
+        
+        if action == Qt.MoveAction and drag.target() == self:
+            for item in self.selectedItems():
+                self.takeItem(self.row(item))
+
     def dragEnterEvent(self, event):
         if event.source() is self:
             super().dragEnterEvent(event)
