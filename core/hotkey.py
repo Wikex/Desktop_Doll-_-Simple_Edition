@@ -1,5 +1,5 @@
 import keyboard
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 from PIL import ImageGrab
 from core.screenshot import get_all_visible_rects
 
@@ -14,6 +14,24 @@ class HotkeyManager(QObject):
         
         for name, key in self.hotkeys.items():
             self.register_hotkey(name, key)
+            
+        # Watchdog: Windows sometimes drops low-level hooks if the system stutters.
+        # This timer silently re-registers them every 60 seconds to ensure they never permanently die.
+        self.watchdog_timer = QTimer(self)
+        self.watchdog_timer.timeout.connect(self._reconnect_hooks)
+        self.watchdog_timer.start(60000)
+
+    def _reconnect_hooks(self):
+        if self.paused:
+            return
+        try:
+            keyboard.unhook_all_hotkeys()
+        except Exception:
+            pass
+        self._registered_hotkeys.clear()
+        for name, key in self.hotkeys.items():
+            if key:
+                self.register_hotkey(name, key)
 
     def register_hotkey(self, name, key):
         if not key:
@@ -24,15 +42,10 @@ class HotkeyManager(QObject):
             def cb(n=name):
                 if getattr(self, 'paused', False):
                     return
-                payload_img = None
-                payload_rects = None
-                if n == "smart_screenshot":
-                    try:
-                        payload_img = ImageGrab.grab(all_screens=True)
-                        payload_rects = get_all_visible_rects()
-                    except Exception:
-                        pass
-                self.action_triggered.emit(n, payload_img, payload_rects)
+                # Do NOT block the low-level keyboard hook with heavy OS calls! 
+                # (ImageGrab and EnumWindows take > 100ms and cause Windows to drop the WH_KEYBOARD_LL hook)
+                # Just emit the signal and let the main thread handle the heavy lifting.
+                self.action_triggered.emit(n, None, None)
                 
             keyboard.add_hotkey(key, cb, suppress=False)
             self._registered_hotkeys[name] = key
