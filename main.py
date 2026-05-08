@@ -414,7 +414,8 @@ class FloatingAssistant:
             if hasattr(self, 'screenshot_mask') and self.screenshot_mask is not None:
                 return
             self._hide_balls_for_screenshot()
-            self.screenshot_mask = ScreenshotMask(mode="record")
+            active_win = QApplication.activeModalWidget() or QApplication.activeWindow()
+            self.screenshot_mask = ScreenshotMask(parent=active_win, mode="record")
             self.screenshot_mask.rect_selected.connect(self._on_record_rect_selected)
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
             self.screenshot_mask.exec()
@@ -501,7 +502,10 @@ class FloatingAssistant:
                 all_rects_global = None
 
             self._hide_balls_for_screenshot()
+            
+            active_win = QApplication.activeModalWidget() or QApplication.activeWindow()
             self.screenshot_mask = ScreenshotMask(
+                parent=active_win,
                 background_image=background_image,
                 all_rects_global=all_rects_global,
                 virtual_screen_left=virtual_left,

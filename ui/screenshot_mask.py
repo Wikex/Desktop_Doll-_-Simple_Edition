@@ -12,9 +12,9 @@ class ScreenshotMask(QDialog):
     finished = Signal()
     rect_selected = Signal(object)
 
-    def __init__(self, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None):
+    def __init__(self, parent=None, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None):
         self.mode = mode
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setWindowModality(Qt.ApplicationModal)
