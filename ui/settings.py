@@ -390,7 +390,17 @@ class SettingsDialog(QDialog):
         
         # --- Tab 5: Hotkeys ---
         self.tab_hotkeys = QWidget()
-        hk_layout = QVBoxLayout(self.tab_hotkeys)
+        hk_main_layout = QVBoxLayout(self.tab_hotkeys)
+        hk_main_layout.setContentsMargins(0, 0, 0, 0)
+        
+        from PySide6.QtWidgets import QScrollArea
+        hk_scroll = QScrollArea()
+        hk_scroll.setWidgetResizable(True)
+        hk_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        hk_content = QWidget()
+        hk_content.setStyleSheet("background: transparent;")
+        hk_layout = QVBoxLayout(hk_content)
         hk_layout.setSpacing(5)
         
         self.screenshot_row = HotkeyRow("screenshot", "系统截屏:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
@@ -411,7 +421,10 @@ class SettingsDialog(QDialog):
             hk_layout.addWidget(row)
             
         hk_layout.addStretch()
-        hk_layout.addLayout(create_restore_btn(self._restore_hotkey_defaults))
+        hk_scroll.setWidget(hk_content)
+        
+        hk_main_layout.addWidget(hk_scroll)
+        hk_main_layout.addLayout(create_restore_btn(self._restore_hotkey_defaults))
         self.tabs.addTab(self.tab_hotkeys, "快捷键") # 快捷键设置
         
         # --- Tab 6: Features ---
@@ -836,7 +849,8 @@ class SettingsDialog(QDialog):
                     "notebook": self.notebook_row,
                     "clipboard": self.clipboard_row,
                     "recent": self.recent_row,
-                    "toggle_ball": self.toggle_ball_row
+                    "toggle_ball": self.toggle_ball_row,
+                    "toggle_panels": self.toggle_panels_row
                 }
                 row_map[name].set_hotkey(self.current_hotkeys.get(name, ""))
 
