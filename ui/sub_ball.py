@@ -5,6 +5,7 @@ from PySide6.QtGui import QMouseEvent, QPainter, QColor, QFont
 
 class SubBall(QWidget):
     clicked = Signal()
+    right_clicked = Signal()
     position_changed = Signal(int, int)
 
     def __init__(self, main_ball, text="📋", radius=80, angle=math.pi * 1.25, tooltip="Clipboard", bg_color=None, icon=None):
@@ -105,6 +106,9 @@ class SubBall(QWidget):
             self._is_dragging = True
             self._has_moved = False
             self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+        elif event.button() == Qt.RightButton:
+            self.right_clicked.emit()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):

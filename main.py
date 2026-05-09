@@ -176,6 +176,8 @@ class FloatingAssistant:
         self.notebook_ball.position_changed.connect(self.on_notebook_ball_moved)
         self.recent_ball.clicked.connect(self.on_recent_ball_clicked)
         self.recent_ball.position_changed.connect(self.on_recent_ball_moved)
+        self.record_ball.right_clicked.connect(self.open_video_folder)
+        self.clipboard_ball.right_clicked.connect(self.open_picture_folder)
 
         # Connections - System
         self.tray.quit_requested.connect(self.quit_app)
@@ -449,6 +451,17 @@ class FloatingAssistant:
         if self.recording_border:
             self.recording_border.hide()
             self.recording_border = None
+
+    def open_video_folder(self):
+        import os
+        if self.video_save_path and os.path.exists(self.video_save_path):
+            os.startfile(self.video_save_path)
+
+    def open_picture_folder(self):
+        import os
+        pic_path = self.options.get("picture_save_path", "")
+        if pic_path and os.path.exists(pic_path):
+            os.startfile(pic_path)
             
     def _on_recording_saved(self, path):
         from PySide6.QtWidgets import QMessageBox
