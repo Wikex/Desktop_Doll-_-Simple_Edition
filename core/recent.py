@@ -1,11 +1,72 @@
 import os
 import json
 import time
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, Signal, QTimer, QThread
 from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled
 from utils.path_helper import get_base_dir
 
 HISTORY_FILE = os.path.join(get_base_dir(), "recent_history.json")
+
+class RecentScannerThread(QThread):
+    scan_finished = Signal(list, dict) # new_items, updated_mtimes
+
+    def __init__(self, excluded_extensions, last_scan_mtime, parent=None):
+        super().__init__(parent)
+        self.excluded_extensions = excluded_extensions.copy() if excluded_extensions else {}
+        self.last_scan_mtime = last_scan_mtime.copy() if last_scan_mtime else {}
+
+    def _normalize_ext(self, ext):
+        ext = ext.strip().lower()
+        if ext and not ext.startswith('.'):
+            ext = '.' + ext
+        return ext
+
+    def run(self):
+        try:
+            lnk_paths = list_recent_lnk_files()
+        except Exception:
+            lnk_paths = []
+
+        changed = False
+        new_items = []
+        updated_mtimes = self.last_scan_mtime.copy()
+
+        for lnk in lnk_paths[:50]:
+            try:
+                mtime = os.path.getmtime(lnk)
+            except Exception:
+                continue
+                
+            if updated_mtimes.get(lnk) == mtime:
+                continue
+            updated_mtimes[lnk] = mtime
+            
+            target = resolve_lnk_target(lnk)
+            if not target or not os.path.exists(target):
+                continue
+                
+            if is_directory_target(target):
+                continue
+                
+            _, ext = os.path.splitext(target)
+            ext = self._normalize_ext(ext)
+            
+            if self.excluded_extensions.get(ext, False):
+                continue
+                
+            name = os.path.basename(target)
+            new_item = {
+                "path": target,
+                "name": name,
+                "ext": ext,
+                "is_app": ext == ".exe",
+                "last_seen": time.time()
+            }
+            new_items.append(new_item)
+            changed = True
+            
+        if changed:
+            self.scan_finished.emit(new_items, updated_mtimes)
 
 class RecentManager(QObject):
     items_changed = Signal(list)
@@ -14,7 +75,7 @@ class RecentManager(QObject):
         super().__init__(parent)
         self.max_items = max_items
         self.tracking_enabled = True
-        self.excluded_extensions = set()
+        self.excluded_extensions = {}
         
         ensure_windows_recent_tracking_enabled()
         
@@ -22,9 +83,13 @@ class RecentManager(QObject):
         
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
-        self.poll_timer.start(2000) # Poll every 2 seconds
+        self.poll_timer.start(5000) # Poll every 5 seconds (was 2s) to reduce IO further
         
         self._last_scan_mtime = {} # path -> mtime
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(2000)
+        self._save_timer.timeout.connect(self._do_save_history)
 
     def set_tracking_enabled(self, enabled):
         was_enabled = self.tracking_enabled
@@ -68,6 +133,9 @@ class RecentManager(QObject):
             return []
 
     def _save_history(self):
+        self._save_timer.start()
+
+    def _do_save_history(self):
         try:
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=4)
@@ -78,58 +146,28 @@ class RecentManager(QObject):
         if not self.tracking_enabled and not silent:
             return
             
-        changed = False
-        
-        try:
-            lnk_paths = list_recent_lnk_files()
-        except Exception:
-            lnk_paths = []
+        if hasattr(self, '_scanner') and self._scanner.isRunning():
+            return
+            
+        self._scanner = RecentScannerThread(self.excluded_extensions, self._last_scan_mtime, self)
+        self._scanner.scan_finished.connect(lambda new_items, mtimes: self._on_scan_finished(new_items, mtimes, silent))
+        self._scanner.start()
 
-        # Take the top N recent shortcuts to process
-        for lnk in lnk_paths[:50]:
-            try:
-                mtime = os.path.getmtime(lnk)
-            except Exception:
-                continue
-                
-            if self._last_scan_mtime.get(lnk) == mtime:
-                continue
-            self._last_scan_mtime[lnk] = mtime
+    def _on_scan_finished(self, new_items, updated_mtimes, silent):
+        self._last_scan_mtime = updated_mtimes
+        
+        if silent:
+            return
             
-            if silent:
-                continue
-            
-            target = resolve_lnk_target(lnk)
-            if not target or not os.path.exists(target):
-                continue
-                
-            if is_directory_target(target):
-                continue
-                
-            _, ext = os.path.splitext(target)
-            ext = self._normalize_ext(ext)
-            
-            if self.excluded_extensions.get(ext, False):
-                continue
-                
-            # Add to history
-            name = os.path.basename(target)
-            
+        changed = False
+        for new_item in new_items:
             # Deduplicate
             existing_idx = -1
             for i, item in enumerate(self.history):
-                if item.get("path") == target:
+                if item.get("path") == new_item.get("path"):
                     existing_idx = i
                     break
                     
-            new_item = {
-                "path": target,
-                "name": name,
-                "ext": ext,
-                "is_app": ext == ".exe",
-                "last_seen": time.time()
-            }
-            
             if existing_idx >= 0:
                 self.history.pop(existing_idx)
             

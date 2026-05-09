@@ -28,6 +28,12 @@ class ClipboardManager(QObject):
         # Connect to clipboard data change signal
         self._clipboard.dataChanged.connect(self._on_clipboard_changed)
         
+        # Debounce timer for saving history to disk (reduces IO stuttering)
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(2000) # Save 2 seconds after last change
+        self._save_timer.timeout.connect(self._do_save_history)
+        
         # Debounce timer for image clipboard changes
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
@@ -96,6 +102,9 @@ class ClipboardManager(QObject):
         return normalized
 
     def _save_history(self):
+        self._save_timer.start()
+
+    def _do_save_history(self):
         try:
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=4)

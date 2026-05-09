@@ -496,7 +496,10 @@ class Panel(QWidget):
         
         v_scroll = self.list_widget.verticalScrollBar().value()
         
+        # Stop UI updates during massive DOM manipulation to prevent stutter
+        self.list_widget.setUpdatesEnabled(False)
         self.list_widget.clear()
+        
         for item_data in self._current_history:
             is_image = isinstance(item_data, dict) and item_data.get("type") == "image"
             
@@ -520,6 +523,7 @@ class Panel(QWidget):
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
             
+        self.list_widget.setUpdatesEnabled(True)
         # Restore scroll position after a short delay to allow layout update
         QTimer.singleShot(0, lambda: self.list_widget.verticalScrollBar().setValue(v_scroll))
 

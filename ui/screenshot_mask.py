@@ -34,6 +34,11 @@ class ScreenshotMask(QDialog):
         self.virtual_screen_top = virtual_screen_top if virtual_screen_top is not None else win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
         self.total_geometry = self._get_total_geometry()
         self.setGeometry(self.total_geometry)
+        
+        self.uia_timer = QTimer(self)
+        self.uia_timer.setSingleShot(True)
+        self.uia_timer.setInterval(100)
+        self.uia_timer.timeout.connect(self._do_uia_search)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -103,22 +108,30 @@ class ScreenshotMask(QDialog):
             max(1, int(round(rect.height() * ratio))),
         )
 
-    def find_best_rect(self, global_pos):
+    def find_best_rect(self, global_pos, include_uia=False):
         import win32gui
         phys_x, phys_y = win32gui.GetCursorPos()
         physical_pos = QPoint(phys_x, phys_y)
         
         screen_area = self.total_geometry.width() * self.total_geometry.height()
         
-        uia_rect = None
-        try:
-            rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
-            if rect:
-                area = rect.width() * rect.height()
-                if 20 < area < screen_area * 0.95:
-                    uia_rect = rect
-        except Exception:
-            pass
+        uia_rect = getattr(self, 'last_uia_rect', None)
+        
+        # If user moved mouse outside the cached UIA rect, invalidate it
+        if uia_rect and not uia_rect.contains(physical_pos):
+            uia_rect = None
+            self.last_uia_rect = None
+
+        if include_uia:
+            try:
+                rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
+                if rect:
+                    area = rect.width() * rect.height()
+                    if 20 < area < screen_area * 0.95:
+                        uia_rect = rect
+                        self.last_uia_rect = uia_rect
+            except Exception:
+                pass
 
         ew_rect = None
         for rect in self.all_rects_global:
@@ -128,15 +141,21 @@ class ScreenshotMask(QDialog):
                     break
 
         if uia_rect and ew_rect:
-            self.last_uia_rect = uia_rect
             self.last_ew_rect = ew_rect
             if (ew_rect.width() * ew_rect.height()) < (uia_rect.width() * uia_rect.height()):
                 return ew_rect
             return uia_rect
             
-        self.last_uia_rect = uia_rect
         self.last_ew_rect = ew_rect
         return uia_rect or ew_rect
+
+    def _do_uia_search(self):
+        if self.is_dragging or not self.current_pos_global:
+            return
+            
+        self.smart_rect_physical = self.find_best_rect(self.current_pos_global, include_uia=True)
+        self.smart_rect_global = self._physical_rect_to_logical(self.smart_rect_physical) if self.smart_rect_physical else None
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -213,7 +232,8 @@ class ScreenshotMask(QDialog):
                 self.is_dragging = True
 
         if not self.is_dragging:
-            self.smart_rect_physical = self.find_best_rect(self.current_pos_global)
+            self.uia_timer.start() # Reset the debounce timer
+            self.smart_rect_physical = self.find_best_rect(self.current_pos_global, include_uia=False)
             self.smart_rect_global = self._physical_rect_to_logical(self.smart_rect_physical) if self.smart_rect_physical else None
 
         self.update()

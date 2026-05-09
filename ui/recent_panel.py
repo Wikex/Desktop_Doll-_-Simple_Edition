@@ -339,6 +339,8 @@ class RecentPanel(QWidget):
 
     def _apply_filter(self):
         v_scroll = self.list_widget.verticalScrollBar().value()
+        
+        self.list_widget.setUpdatesEnabled(False)
         self.list_widget.clear()
         
         for item_data in self._current_items:
@@ -356,6 +358,7 @@ class RecentPanel(QWidget):
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
             
+        self.list_widget.setUpdatesEnabled(True)
         QTimer.singleShot(0, lambda: self.list_widget.verticalScrollBar().setValue(v_scroll))
 
     def _on_item_clicked(self, item):
