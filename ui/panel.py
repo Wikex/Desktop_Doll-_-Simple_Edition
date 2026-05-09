@@ -265,12 +265,84 @@ class ClipboardListWidget(QListWidget):
     item_ctrl_left_clicked = Signal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
         self.setDefaultDropAction(Qt.MoveAction)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def mimeData(self, items):
+        mime_data = super().mimeData(items)
+        from PySide6.QtCore import QUrl
+        import os
+        
+        urls = []
+        texts = []
+        htmls = []
+        
+        for item in items:
+            item_data = item.data(Qt.UserRole)
+            if isinstance(item_data, dict):
+                if item_data.get("type") == "image":
+                    val = item_data.get("value", "")
+                    if item_data.get("is_path", False) and os.path.exists(val):
+                        urls.append(QUrl.fromLocalFile(val))
+                else:
+                    text = item_data.get("value", "")
+                    if text:
+                        texts.append(text)
+                    html = item_data.get("html", "")
+                    if html:
+                        htmls.append(html)
+            else:
+                texts.append(str(item_data))
+                
+        if urls:
+            mime_data.setUrls(urls)
+        if texts:
+            mime_data.setText("\n".join(texts))
+        if htmls:
+            mime_data.setHtml("<br>".join(htmls))
+            
+        return mime_data
+
+    def startDrag(self, supportedActions):
+        from PySide6.QtGui import QDrag
+        from PySide6.QtCore import QPoint
+        drag = QDrag(self)
+        
+        mime_data = self.mimeData(self.selectedItems())
+        drag.setMimeData(mime_data)
+        
+        selected = self.selectedItems()
+        if selected:
+            rect = self.visualItemRect(selected[0])
+            pixmap = self.viewport().grab(rect)
+            drag.setPixmap(pixmap)
+            drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
+            
+        action = drag.exec(supportedActions, Qt.CopyAction)
+        
+        if action == Qt.MoveAction and drag.target() == self:
+            for item in self.selectedItems():
+                self.takeItem(self.row(item))
+
+    def dragEnterEvent(self, event):
+        if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
+            super().dragEnterEvent(event)
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
+            super().dragMoveEvent(event)
+        else:
+            event.ignore()
         
     def dropEvent(self, event):
+        if event.source() is self:
+            event.setDropAction(Qt.MoveAction)
         super().dropEvent(event)
         new_order = [self.item(i).data(Qt.UserRole) for i in range(self.count())]
         self.order_changed.emit(new_order)
