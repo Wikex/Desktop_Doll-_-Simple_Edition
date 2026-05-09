@@ -175,6 +175,8 @@ class ClipboardItemWidget(QWidget):
             pixmap = QPixmap.fromImage(image)
             # 缩放至最大高度 60 像素，保持比例
             pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
+            if pixmap.width() > 170:
+                pixmap = pixmap.scaled(170, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.label = QLabel()
             self.full_tooltip_text = f"图片路径: {val}"
             self.label.setPixmap(pixmap)
@@ -212,7 +214,7 @@ class ClipboardItemWidget(QWidget):
                 display_text = display_text[:100] + "..."
             
             fm = QFontMetrics(self.label.font())
-            max_width = 190
+            max_width = 170
             
             if fm.horizontalAdvance(display_text) <= max_width:
                 final_text = display_text

@@ -132,9 +132,9 @@ class RecentItemWidget(QWidget):
         name_fm = QFontMetrics(name_label.font())
         path_fm = QFontMetrics(path_label.font())
         
-        # Max width 190 to account for delete button and icon
-        elided_name = name_fm.elidedText(name, Qt.ElideRight, 190)
-        elided_path = path_fm.elidedText(path, Qt.ElideRight, 190)
+        # Max width 170 to account for delete button and icon and prevent clipping right border
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 170)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 170)
         
         name_label.setText(elided_name)
         path_label.setText(elided_path)
