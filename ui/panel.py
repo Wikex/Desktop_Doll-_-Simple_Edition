@@ -206,6 +206,11 @@ class ClipboardItemWidget(QWidget):
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')
             display_text = display_text.replace('\n', '  ')
             
+            # HUGE PERFORMANCE FIX: Truncate display text to max 100 chars before measuring.
+            # Measuring a 50,000 char clipboard string backwards takes 30+ seconds and freezes the UI!
+            if len(display_text) > 100:
+                display_text = display_text[:100] + "..."
+            
             fm = QFontMetrics(self.label.font())
             max_width = 190
             
