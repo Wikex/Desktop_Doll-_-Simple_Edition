@@ -59,12 +59,12 @@ class ScreenRecorderThread(QThread):
             
             if ext == "webm":
                 fourcc = cv2.VideoWriter_fourcc(*'VP80')
-                fps = 20.0
+                fps = 60.0
                 out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
             else:
                 # Try H264 via Media Foundation backend
                 fourcc = cv2.VideoWriter_fourcc(*'H264')
-                fps = 20.0
+                fps = 60.0
                 out = cv2.VideoWriter(filepath, cv2.CAP_MSMF, fourcc, fps, (width, height))
                 
                 # Fallback to standard MP4v if H264 fails to initialize
