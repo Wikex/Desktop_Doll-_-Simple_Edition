@@ -4,11 +4,13 @@ dist/
 build/
 *.spec
 history.json
+recent_history.json
 config.json
 notebook.json
-test_drag.py
-.vscode/
-.idea/
 test_*.py
 video/
+picture/
 *.exe
+*.log
+profile_*.py
+*_Release/
