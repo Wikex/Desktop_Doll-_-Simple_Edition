@@ -293,13 +293,9 @@ class FloatingAssistant:
         # When main ball is clicked, show/hide the surrounding sub balls
         any_visible = any(sb.isVisible() for sb in self.sub_balls)
         if any_visible:
-            # Hide all sub balls and panels
+            # Hide all sub balls
             for sb in self.sub_balls:
                 sb.hide()
-            self.panel.hide()
-            self.notebook_panel.hide()
-            self.search_panel.hide()
-            self.recent_panel.hide()
         else:
             # Show all sub balls based on options
             if self.options.get("enable_clipboard_ball", True):
