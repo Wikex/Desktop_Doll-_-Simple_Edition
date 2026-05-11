@@ -151,8 +151,14 @@ class ClipboardManager(QObject):
                         native_formats.append(win32clipboard.GetClipboardFormatName(f))
                     except Exception:
                         pass
+                    # Also keep track of integer formats
+                    native_formats.append(str(f))
                     f = win32clipboard.EnumClipboardFormats(f)
                 win32clipboard.CloseClipboard()
+                
+                # If EMF (14) or WMF (3) is present, it's an image/equation, NOT a format painter!
+                if "14" in native_formats or "3" in native_formats:
+                    return False
                 
                 if owner_hwnd:
                     _, pid = win32process.GetWindowThreadProcessId(owner_hwnd)
@@ -239,12 +245,26 @@ class ClipboardManager(QObject):
         
         CF_ENHMETAFILE = 14
 
-        if not user32.OpenClipboard(0):
+        opened = False
+        for _ in range(5):
+            if user32.OpenClipboard(0):
+                opened = True
+                break
+            import time
+            time.sleep(0.05)
+            
+        if not opened:
+            try:
+                with open("emf_error.log", "a") as f: f.write("Failed to open clipboard for EMF\n")
+            except: pass
             return None
 
         try:
             hemf = user32.GetClipboardData(CF_ENHMETAFILE)
             if not hemf:
+                try:
+                    with open("emf_error.log", "a") as f: f.write("GetClipboardData(14) returned null\n")
+                except: pass
                 return None
 
             # 1. Get EMF dimensions
