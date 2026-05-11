@@ -44,7 +44,7 @@ class ClipboardManager(QObject):
         self.ignore_next = False
         self.last_text = None
         self.last_text_at = 0.0
-        self.text_dedupe_window = 1.0
+        self.text_dedupe_window = 2.5
 
     def _load_history(self):
         if not os.path.exists(HISTORY_FILE):
@@ -403,10 +403,8 @@ class ClipboardManager(QObject):
         if item.get("type") == "image":
             return ("image", item.get("value", ""))
         
-        import re
         val = item.get("value", "")
-        normalized_val = re.sub(r'\s+', '', val)
-        return ("text", normalized_val)
+        return ("text", self._normalize_text_key(val))
 
     def _trim_history(self):
         if len(self.history) > self.max_items:
