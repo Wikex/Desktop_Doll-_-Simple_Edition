@@ -8,6 +8,7 @@ from PySide6.QtGui import QClipboard, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from utils.path_helper import get_base_dir
+from utils.logger import log_exception
 HISTORY_FILE = os.path.join(get_base_dir(), "history.json")
 
 class ClipboardManager(QObject):
@@ -54,7 +55,7 @@ class ClipboardManager(QObject):
                 raw = json.load(f)
                 return self._dedupe_history(self._normalize_history(raw))
         except Exception as e:
-            print(f"Failed to load history: {e}")
+            log_exception(f"Failed to load clipboard history: {e}")
             return []
 
     def _normalize_text_key(self, text):
@@ -109,7 +110,7 @@ class ClipboardManager(QObject):
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Failed to save history: {e}")
+            log_exception(f"Failed to save clipboard history: {e}")
 
     def _on_clipboard_changed(self, mode=QClipboard.Clipboard):
         if mode != QClipboard.Clipboard:
@@ -169,12 +170,13 @@ class ClipboardManager(QObject):
                         # WPS Format Painter typically has exactly 6 formats: ['DataObject', '13', '1', 'Ole Private Data', '16', '7']
                         if "Ole Private Data" in native_formats and len(native_formats) <= 6 and "Rich Text Format" not in native_formats:
                             return True
-            except Exception:
+            except Exception as e:
+                log_exception(f"Failed to inspect clipboard owner: {e}")
                 try:
                     import win32clipboard
                     win32clipboard.CloseClipboard()
-                except:
-                    pass
+                except Exception as close_error:
+                    log_exception(f"Failed to close clipboard: {close_error}")
                     
         return False
 
@@ -235,9 +237,7 @@ class ClipboardManager(QObject):
         filepath = os.path.join(self.picture_save_path, filename)
         
         image.save(filepath, "PNG")
-        
-        self._manage_image_cache()
-        
+
         return {
             "type": "image",
             "value": filepath,
@@ -247,7 +247,12 @@ class ClipboardManager(QObject):
     def _manage_image_cache(self):
         if not getattr(self, "picture_save_path", "") or not os.path.exists(self.picture_save_path):
             return
-            
+
+        referenced = set()
+        for item in self.history:
+            if item.get("type") == "image" and item.get("is_path", False):
+                referenced.add(os.path.abspath(item.get("value", "")))
+
         files = []
         for f in os.listdir(self.picture_save_path):
             p = os.path.join(self.picture_save_path, f)
@@ -257,12 +262,12 @@ class ClipboardManager(QObject):
         limit = getattr(self, "max_images", 20)
         if len(files) > limit:
             files.sort(key=lambda x: x[1]) # oldest first
-            # delete oldest until we reach limit
-            for i in range(len(files) - limit):
+            removable = [item for item in files if os.path.abspath(item[0]) not in referenced]
+            for p, _ in removable[:len(files) - limit]:
                 try:
-                    os.remove(files[i][0])
-                except Exception:
-                    pass
+                    os.remove(p)
+                except Exception as e:
+                    log_exception(f"Failed to remove cached clipboard image: {e}")
 
     def _item_key(self, item):
         if item.get("type") == "image":
@@ -304,6 +309,7 @@ class ClipboardManager(QObject):
                         continue
             valid_history.append(it)
         self.history = valid_history
+        self._manage_image_cache()
         
         self._save_history()
         self.history_changed.emit(self.history)
@@ -371,8 +377,8 @@ class ClipboardManager(QObject):
                 try:
                     data = base64.b64decode(val)
                     image.loadFromData(data, "PNG")
-                except:
-                    pass
+                except Exception as e:
+                    log_exception(f"Failed to decode clipboard image item: {e}")
             if not image.isNull():
                 import hashlib
                 img_data = image.bits().tobytes()

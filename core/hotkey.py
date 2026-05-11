@@ -3,6 +3,7 @@ from ctypes import wintypes
 from PySide6.QtCore import QObject, Signal, QAbstractNativeEventFilter
 from PIL import ImageGrab
 from core.screenshot import get_all_visible_rects
+from utils.logger import log_message
 
 WM_HOTKEY = 0x0312
 MOD_ALT = 0x0001
@@ -73,6 +74,7 @@ class HotkeyManager(QObject):
         super().__init__(parent)
         self.app = app
         self.hotkeys = hotkeys or {}
+        self.failed_hotkeys = {}
         self._registered_ids = {} # map id -> name
         self._next_id = 1
         self.paused = False
@@ -108,18 +110,31 @@ class HotkeyManager(QObject):
         if success:
             self._registered_ids[hk_id] = name
             self.hotkeys[name] = key
+            self.failed_hotkeys.pop(name, None)
             return True
         else:
-            print(f"Failed to register hotkey {key} for {name}")
+            self.failed_hotkeys[name] = key
+            log_message(f"Failed to register hotkey {key} for {name}")
             return False
 
     def update_hotkey(self, name, new_key):
+        old_key = self.hotkeys.get(name, "")
+        if new_key == old_key:
+            return True
+
         self.unregister_hotkey(name)
-        if new_key:
-            return self.register_hotkey(name, new_key)
-        else:
+        if not new_key:
             self.hotkeys[name] = ""
             return True
+
+        if self.register_hotkey(name, new_key):
+            return True
+
+        if old_key:
+            self.register_hotkey(name, old_key)
+        else:
+            self.hotkeys[name] = ""
+        return False
 
     def unregister_hotkey(self, name):
         hk_id = None

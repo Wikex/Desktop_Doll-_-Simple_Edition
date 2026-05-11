@@ -1,6 +1,7 @@
 import os
 import win32com.client
 import winreg
+from utils.logger import log_exception
 
 def ensure_windows_recent_tracking_enabled():
     try:
@@ -13,7 +14,7 @@ def ensure_windows_recent_tracking_enabled():
             winreg.SetValueEx(key, "Start_TrackDocs", 0, winreg.REG_DWORD, 1)
         winreg.CloseKey(key)
     except Exception as e:
-        print(f"Failed to enable Windows recent tracking: {e}")
+        log_exception(f"Failed to enable Windows recent tracking: {e}")
 
 def get_recent_dir():
     return os.path.join(os.environ.get('APPDATA', ''), r'Microsoft\Windows\Recent')
@@ -28,8 +29,8 @@ def list_recent_lnk_files():
         for entry in os.scandir(recent_dir):
             if entry.is_file() and entry.name.lower().endswith('.lnk'):
                 lnk_files.append((entry.path, entry.stat().st_mtime))
-    except Exception:
-        pass
+    except Exception as e:
+        log_exception(f"Failed to scan Windows Recent folder: {e}")
         
     # Sort by modification time descending
     lnk_files.sort(key=lambda x: x[1], reverse=True)
@@ -41,7 +42,8 @@ def resolve_lnk_target(lnk_path):
         shortcut = shell.CreateShortCut(lnk_path)
         target = shortcut.Targetpath
         return target
-    except Exception:
+    except Exception as e:
+        log_exception(f"Failed to resolve shortcut target: {e}")
         return None
 
 def is_directory_target(target_path):

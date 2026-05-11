@@ -6,6 +6,7 @@ from PIL import ImageGrab
 import io
 import win32api
 import win32con
+from utils.logger import log_exception
 
 
 class ScreenshotMask(QDialog):
@@ -294,7 +295,7 @@ class ScreenshotMask(QDialog):
 
             QApplication.clipboard().setPixmap(pixmap)
         except Exception as e:
-            print(f"Capture failed: {e}")
+            log_exception(f"Capture failed: {e}")
         finally:
             self.finished.emit()
             self.accept()

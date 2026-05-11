@@ -4,6 +4,7 @@ import time
 from PySide6.QtCore import QObject, Signal, QTimer, QThread
 from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled
 from utils.path_helper import get_base_dir
+from utils.logger import log_exception
 
 HISTORY_FILE = os.path.join(get_base_dir(), "recent_history.json")
 
@@ -24,7 +25,8 @@ class RecentScannerThread(QThread):
     def run(self):
         try:
             lnk_paths = list_recent_lnk_files()
-        except Exception:
+        except Exception as e:
+            log_exception(f"Failed to list recent files: {e}")
             lnk_paths = []
 
         changed = False
@@ -83,7 +85,7 @@ class RecentManager(QObject):
         
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
-        self.poll_timer.start(5000) # Poll every 5 seconds (was 2s) to reduce IO further
+        self.poll_timer.start(15000)
         
         self._last_scan_mtime = {} # path -> mtime
         self._save_timer = QTimer(self)
@@ -129,7 +131,8 @@ class RecentManager(QObject):
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except Exception:
+        except Exception as e:
+            log_exception(f"Failed to load recent history: {e}")
             return []
 
     def _save_history(self):
@@ -139,8 +142,8 @@ class RecentManager(QObject):
         try:
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=4)
-        except Exception:
-            pass
+        except Exception as e:
+            log_exception(f"Failed to save recent history: {e}")
 
     def tick_scan(self, silent=False):
         if not self.tracking_enabled and not silent:
@@ -224,7 +227,7 @@ class RecentManager(QObject):
             try:
                 os.startfile(path)
             except Exception as e:
-                print(f"Failed to open {path}: {e}")
+                log_exception(f"Failed to open {path}: {e}")
 
     def open_item_location(self, item):
         path = item.get("path") if isinstance(item, dict) else str(item)
@@ -233,4 +236,4 @@ class RecentManager(QObject):
             try:
                 subprocess.run(['explorer', '/select,', os.path.normpath(path)])
             except Exception as e:
-                print(f"Failed to open location for {path}: {e}")
+                log_exception(f"Failed to open location for {path}: {e}")

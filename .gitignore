@@ -3,11 +3,13 @@ __pycache__/
 dist/
 build/
 *.spec
+!桌面人偶.spec
 history.json
 recent_history.json
 config.json
 notebook.json
 test_*.py
+!tools/diagnostics/test_*.py
 video/
 picture/
 *.exe

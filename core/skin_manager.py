@@ -2,6 +2,7 @@ import os
 import json
 from PySide6.QtCore import QObject, Signal
 from utils.path_helper import get_base_dir
+from utils.logger import log_exception
 
 class SkinManager(QObject):
     skin_changed = Signal(dict)
@@ -42,8 +43,7 @@ class SkinManager(QObject):
                     config["_path"] = os.path.join(self.skins_dir, name)
                     return config
             except Exception as e:
-                print(f"Failed to load skin {name}: {e}")
-                pass
+                log_exception(f"Failed to load skin {name}: {e}")
                 
         # Fallback to default
         return {"type": "code", "_path": "", "main_ball": {"size": [60, 60]}, "sub_ball": {"size": [36, 36]}}

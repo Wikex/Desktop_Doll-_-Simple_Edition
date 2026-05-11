@@ -7,6 +7,7 @@ from datetime import datetime
 from PySide6.QtCore import QThread, Signal, QRect
 import win32api
 import win32con
+from utils.logger import log_exception
 
 class ScreenRecorderThread(QThread):
     finished_recording = Signal(str)
@@ -24,6 +25,10 @@ class ScreenRecorderThread(QThread):
         
     def run(self):
         self._running = True
+        out = None
+        filepath = ""
+        error_message = ""
+        completed = False
         try:
             if not os.path.exists(self.save_dir):
                 os.makedirs(self.save_dir, exist_ok=True)
@@ -49,6 +54,10 @@ class ScreenRecorderThread(QThread):
                 width -= 1
             if height % 2 != 0:
                 height -= 1
+
+            if width < 10 or height < 10:
+                error_message = "录屏区域过小，请选择至少 10 x 10 像素的区域"
+                return
                 
             monitor = {
                 "left": left,
@@ -73,7 +82,7 @@ class ScreenRecorderThread(QThread):
                     out = cv2.VideoWriter(filepath, fourcc, fps, (width, height))
             
             if not out.isOpened():
-                self.error_occurred.emit("无法初始化视频写入器")
+                error_message = "无法初始化视频写入器"
                 return
                 
             sct = mss.mss()
@@ -92,9 +101,15 @@ class ScreenRecorderThread(QThread):
                 sleep_time = frame_time - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-                    
-            out.release()
-            self.finished_recording.emit(filepath)
-            
+            completed = True
+
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            error_message = str(e)
+            log_exception(f"Screen recording failed: {e}")
+        finally:
+            if out is not None:
+                out.release()
+            if error_message:
+                self.error_occurred.emit(error_message)
+            elif completed and filepath:
+                self.finished_recording.emit(filepath)

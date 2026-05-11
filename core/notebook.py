@@ -1,6 +1,7 @@
 import json
 import os
 from PySide6.QtCore import QObject, Signal, QTimer
+from utils.logger import log_exception
 
 NOTEBOOK_FILE = "notebook.json"
 
@@ -26,7 +27,7 @@ class NotebookManager(QObject):
                     data = json.load(f)
                     self.content = data.get("content", "")
             except Exception as e:
-                print(f"Failed to load notebook: {e}")
+                log_exception(f"Failed to load notebook: {e}")
         self.content_loaded.emit(self.content)
         return self.content
 
@@ -40,4 +41,4 @@ class NotebookManager(QObject):
             with open(NOTEBOOK_FILE, "w", encoding="utf-8") as f:
                 json.dump({"content": self.content}, f, ensure_ascii=False, indent=4)
         except Exception as e:
-            print(f"Failed to save notebook: {e}")
+            log_exception(f"Failed to save notebook: {e}")

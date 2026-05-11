@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
 from PySide6.QtCore import Qt, Signal, QTimer, QPoint
 from PySide6.QtGui import QMouseEvent, QPixmap, QImage
 import base64
+from utils.logger import log_exception
 
 class PinnedImageDialog(QWidget):
     def __init__(self, pixmap, item_data=None, parent=None):
@@ -164,14 +165,14 @@ class ClipboardItemWidget(QWidget):
                 try:
                     with open(val, "rb") as f:
                         image.loadFromData(f.read(), "PNG")
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_exception(f"Failed to load clipboard image preview: {e}")
             else:
                 try:
                     data = base64.b64decode(val)
                     image.loadFromData(data, "PNG")
-                except:
-                    pass
+                except Exception as e:
+                    log_exception(f"Failed to decode clipboard image preview: {e}")
             pixmap = QPixmap.fromImage(image)
             # 缩放至最大高度 60 像素，保持比例
             pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
@@ -642,15 +643,15 @@ class Panel(QWidget):
                 try:
                     with open(val, "rb") as f:
                         image.loadFromData(f.read(), "PNG")
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_exception(f"Failed to load clipboard image detail: {e}")
             else:
                 import base64
                 try:
                     data = base64.b64decode(val)
                     image.loadFromData(data, "PNG")
-                except:
-                    pass
+                except Exception as e:
+                    log_exception(f"Failed to decode clipboard image detail: {e}")
             
             if image.isNull():
                 self.item_deleted.emit(item_data)

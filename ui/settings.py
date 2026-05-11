@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QApplication, QMessageBox, QCheckBox, QSpinBox, QFileDialog, QComboBox)
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent, QIcon, QCloseEvent
-from utils.config import save_hotkeys, save_option, DEFAULT_OPTIONS, DEFAULT_HOTKEYS
+from utils.config import load_config, save_config, save_hotkeys, DEFAULT_OPTIONS, DEFAULT_HOTKEYS
 
 class HotkeyLineEdit(QLineEdit):
     focus_in = Signal()
@@ -259,6 +259,20 @@ class SettingsDialog(QDialog):
         self.chk_hide_ball.setChecked(self.current_options.get("hide_ball_when_screenshot", True))
         self.chk_hide_ball.stateChanged.connect(self._on_general_changed)
         gen_layout.addWidget(self.chk_hide_ball)
+
+        browser_layout = QHBoxLayout()
+        browser_label = QLabel("浏览器程序:")
+        self.browser_path_input = QLineEdit(self.current_options.get("browser_path", ""))
+        self.browser_path_input.setPlaceholderText("留空使用系统默认浏览器")
+        self.browser_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; color: #0f172a;")
+        self.browser_path_input.editingFinished.connect(self._on_browser_path_changed)
+        btn_browse_browser = QPushButton("浏览...")
+        btn_browse_browser.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_browser.clicked.connect(self._browse_browser_path)
+        browser_layout.addWidget(browser_label)
+        browser_layout.addWidget(self.browser_path_input)
+        browser_layout.addWidget(btn_browse_browser)
+        gen_layout.addLayout(browser_layout)
         
         gen_layout.addStretch()
         gen_layout.addLayout(create_restore_btn(self._restore_general_defaults))
@@ -392,6 +406,14 @@ class SettingsDialog(QDialog):
         self.tab_hotkeys = QWidget()
         hk_main_layout = QVBoxLayout(self.tab_hotkeys)
         hk_main_layout.setContentsMargins(0, 0, 0, 0)
+
+        failed_hotkeys = getattr(self.hotkey_mgr, "failed_hotkeys", {})
+        if failed_hotkeys:
+            failed_text = "以下快捷键被占用，未能注册：" + "、".join(f"{name}={key}" for name, key in failed_hotkeys.items())
+            lbl_failed = QLabel(failed_text)
+            lbl_failed.setWordWrap(True)
+            lbl_failed.setStyleSheet("padding: 8px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; border-radius: 6px;")
+            hk_main_layout.addWidget(lbl_failed)
         
         from PySide6.QtWidgets import QScrollArea
         hk_scroll = QScrollArea()
@@ -644,23 +666,28 @@ class SettingsDialog(QDialog):
             self._auto_save_options()
 
     def _auto_save_options(self):
-        for k, v in self.current_options.items():
-            save_option(k, v)
+        config = load_config()
+        config["options"] = dict(self.current_options)
+        save_config(config)
         self.settings_saved.emit(self.current_options)
 
     def _on_general_changed(self):
         self.current_options["hide_ball_when_screenshot"] = self.chk_hide_ball.isChecked()
         self._auto_save_options()
 
+    def _on_browser_path_changed(self):
+        self.current_options["browser_path"] = self.browser_path_input.text().strip()
+        self._auto_save_options()
+
+    def _browse_browser_path(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择浏览器程序", "", "Executable Files (*.exe)")
+        if path:
+            self.browser_path_input.setText(path)
+            self.current_options["browser_path"] = path
+            self._auto_save_options()
+
     
     def _browse_pic_path(self):
-        import os
-        import shutil
-        old_path = self.current_options.get("picture_save_path", "")
-        if not old_path:
-            from utils.path_helper import get_base_dir
-            old_path = os.path.join(get_base_dir(), "picture")
-            
         path = QFileDialog.getExistingDirectory(self, "\u9009\u62e9\u56fe\u7247\u4fdd\u5b58\u6587\u4ef6\u5939", self.pic_path_input.text())
         if path:
             self.pic_path_input.setText(path)
@@ -668,13 +695,6 @@ class SettingsDialog(QDialog):
             self._auto_save_options()
 
     def _browse_video_path(self):
-        import os
-        import shutil
-        old_path = self.current_options.get("video_save_path", "")
-        if not old_path:
-            from utils.path_helper import get_base_dir
-            old_path = os.path.join(get_base_dir(), "video")
-            
         path = QFileDialog.getExistingDirectory(self, "\u9009\u62e9\u5f55\u5c4f\u4fdd\u5b58\u6587\u4ef6\u5939", self.video_path_input.text())
         if path:
             self.video_path_input.setText(path)
@@ -685,8 +705,12 @@ class SettingsDialog(QDialog):
         self.chk_hide_ball.blockSignals(True)
         self.chk_hide_ball.setChecked(DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True))
         self.chk_hide_ball.blockSignals(False)
+        self.browser_path_input.blockSignals(True)
+        self.browser_path_input.setText(DEFAULT_OPTIONS.get("browser_path", ""))
+        self.browser_path_input.blockSignals(False)
         
         self.current_options["hide_ball_when_screenshot"] = DEFAULT_OPTIONS.get("hide_ball_when_screenshot", True)
+        self.current_options["browser_path"] = DEFAULT_OPTIONS.get("browser_path", "")
         self._auto_save_options()
 
     def _restore_video_defaults(self):
@@ -863,7 +887,8 @@ class SettingsDialog(QDialog):
             "notebook": self.notebook_row,
             "clipboard": self.clipboard_row,
             "recent": self.recent_row,
-            "toggle_ball": self.toggle_ball_row
+            "toggle_ball": self.toggle_ball_row,
+            "toggle_panels": self.toggle_panels_row
         }
         
         failed = []
