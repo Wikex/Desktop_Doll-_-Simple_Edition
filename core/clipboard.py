@@ -166,8 +166,8 @@ class ClipboardManager(QObject):
                     if process_name in ["wps.exe", "et.exe", "wpp.exe", "winword.exe", "excel.exe", "powerpnt.exe"]:
                         # Ole Private Data is present in Format Painter, but not in simple text box copies
                         # PPT text boxes have Ole Private Data, but they also have DOZENS of formats (PNG, EMF, etc).
-                        # Format Painter only has about 6-8 formats.
-                        if "Ole Private Data" in native_formats and len(native_formats) <= 10 and "Rich Text Format" not in native_formats:
+                        # WPS Format Painter typically has exactly 6 formats: ['DataObject', '13', '1', 'Ole Private Data', '16', '7']
+                        if "Ole Private Data" in native_formats and len(native_formats) <= 6 and "Rich Text Format" not in native_formats:
                             return True
             except Exception:
                 try:
