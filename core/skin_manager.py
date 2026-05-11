@@ -1,8 +1,70 @@
 import os
 import json
+import copy
 from PySide6.QtCore import QObject, Signal
 from utils.path_helper import get_base_dir
 from utils.logger import log_exception
+
+DEFAULT_SKIN_CONFIG = {
+    "name": "简洁性能样式",
+    "type": "code",
+    "performance": {
+        "animations": False,
+        "use_gradients": False,
+        "screenshot_debug_overlay": False
+    },
+    "main_ball": {
+        "size": [56, 56],
+        "color": [37, 99, 235, 230],
+        "border_color": [255, 255, 255, 90]
+    },
+    "sub_ball": {
+        "size": [34, 34],
+        "font_size": 10,
+        "icon_size": 20,
+        "border_color": [255, 255, 255, 80],
+        "colors": {
+            "clipboard": [245, 158, 11, 230],
+            "screenshot": [34, 197, 94, 230],
+            "notebook": [59, 130, 246, 230],
+            "smart_screenshot": [239, 68, 68, 230],
+            "record": [220, 38, 38, 230],
+            "record_active": [34, 197, 94, 230],
+            "search": [124, 58, 237, 230],
+            "recent": [20, 184, 166, 230],
+            "custom": [100, 116, 139, 230]
+        }
+    },
+    "layout": {
+        "first_ring_radius": 54,
+        "ring_spacing": 42,
+        "ball_gap": 42,
+        "max_drag_radius": 145
+    },
+    "panel": {
+        "size": [300, 390],
+        "radius": 6,
+        "margin": 8,
+        "item_radius": 4,
+        "item_height": 58
+    },
+    "settings": {
+        "size": [560, 440],
+        "radius": 6,
+        "compact": True
+    }
+}
+
+
+def _deep_merge(defaults, override):
+    merged = copy.deepcopy(defaults)
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
 
 class SkinManager(QObject):
     skin_changed = Signal(dict)
@@ -19,20 +81,11 @@ class SkinManager(QObject):
             os.makedirs(self.skins_dir, exist_ok=True)
             
         default_dir = os.path.join(self.skins_dir, "default")
-        if not os.path.exists(default_dir):
-            os.makedirs(default_dir, exist_ok=True)
-            default_config = {
-                "name": "默认样式",
-                "type": "code",
-                "main_ball": {
-                    "size": [60, 60]
-                },
-                "sub_ball": {
-                    "size": [36, 36]
-                }
-            }
-            with open(os.path.join(default_dir, "skin.json"), "w", encoding="utf-8") as f:
-                json.dump(default_config, f, indent=4, ensure_ascii=False)
+        os.makedirs(default_dir, exist_ok=True)
+        default_skin_path = os.path.join(default_dir, "skin.json")
+        if not os.path.exists(default_skin_path):
+            with open(default_skin_path, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_SKIN_CONFIG, f, indent=4, ensure_ascii=False)
 
     def _load_skin(self, name):
         skin_path = os.path.join(self.skins_dir, name, "skin.json")
@@ -41,12 +94,13 @@ class SkinManager(QObject):
                 with open(skin_path, "r", encoding="utf-8") as f:
                     config = json.load(f)
                     config["_path"] = os.path.join(self.skins_dir, name)
-                    return config
+                    return _deep_merge(DEFAULT_SKIN_CONFIG, config)
             except Exception as e:
                 log_exception(f"Failed to load skin {name}: {e}")
                 
-        # Fallback to default
-        return {"type": "code", "_path": "", "main_ball": {"size": [60, 60]}, "sub_ball": {"size": [36, 36]}}
+        fallback = copy.deepcopy(DEFAULT_SKIN_CONFIG)
+        fallback["_path"] = ""
+        return fallback
 
     def get_available_skins(self):
         if not os.path.exists(self.skins_dir):

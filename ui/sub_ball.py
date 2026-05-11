@@ -8,9 +8,10 @@ class SubBall(QWidget):
     right_clicked = Signal()
     position_changed = Signal(int, int)
 
-    def __init__(self, main_ball, text="📋", radius=80, angle=math.pi * 1.25, tooltip="Clipboard", bg_color=None, icon=None):
+    def __init__(self, main_ball, text="📋", radius=80, angle=math.pi * 1.25, tooltip="Clipboard", bg_color=None, icon=None, skin_config=None):
         super().__init__()
         self.main_ball = main_ball
+        self.skin_config = skin_config or {}
         self.radius = radius # Target distance from main ball center
         self.angle = angle   # Current angle in radians
         self.default_angle = angle
@@ -29,8 +30,8 @@ class SubBall(QWidget):
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        # 将小球稍微缩小一点
-        self.setFixedSize(36, 36)
+        size = self.skin_config.get("sub_ball", {}).get("size", [34, 34])
+        self.setFixedSize(int(size[0]), int(size[1]))
         
         # 增加鼠标悬停提示
         self.setToolTip(self.tooltip)
@@ -38,36 +39,25 @@ class SubBall(QWidget):
         self.setStyleSheet("QToolTip { color: #000; background-color: #ffffe0; border: 1px solid #ccc; font-weight: bold; }")
         
     def paintEvent(self, event):
-        from PySide6.QtGui import QRadialGradient
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Modern gradient based on bg_color
-        r, g, b, a = self.bg_color.red(), self.bg_color.green(), self.bg_color.blue(), self.bg_color.alpha()
-        
-        # Lighter top-left
-        lighter = QColor(min(255, r + 40), min(255, g + 40), min(255, b + 40), a)
-        # Darker bottom-right
-        darker = QColor(max(0, r - 20), max(0, g - 20), max(0, b - 20), a)
-        
-        gradient = QRadialGradient(self.width() / 3, self.height() / 3, self.width() * 0.8)
-        gradient.setColorAt(0, lighter)
-        gradient.setColorAt(1, darker)
-        
-        painter.setBrush(gradient)
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, self.width(), self.height())
+
+        border = self._color(self.skin_config.get("sub_ball", {}).get("border_color"), QColor(255, 255, 255, 80))
+        painter.setBrush(self.bg_color)
+        painter.setPen(border)
+        painter.drawEllipse(1, 1, self.width() - 2, self.height() - 2)
         
         # Draw icon/text
         painter.setPen(Qt.white)
         font = QFont()
-        font.setPointSize(10) # 稍微调小字体以适应更小的球
+        font.setPointSize(int(self.skin_config.get("sub_ball", {}).get("font_size", 10)))
         font.setBold(True)
         painter.setFont(font)
         if hasattr(self, 'icon') and self.icon and not self.icon.isNull():
-            pixmap = self.icon.pixmap(20, 20)
+            icon_size = int(self.skin_config.get("sub_ball", {}).get("icon_size", 20))
+            pixmap = self.icon.pixmap(icon_size, icon_size)
             if not pixmap.isNull():
-                painter.drawPixmap((self.width() - 20) // 2, (self.height() - 20) // 2, pixmap)
+                painter.drawPixmap((self.width() - icon_size) // 2, (self.height() - icon_size) // 2, pixmap)
             else:
                 painter.drawText(self.rect(), Qt.AlignCenter, self.text)
         else:
@@ -134,7 +124,7 @@ class SubBall(QWidget):
             # 最小半径 = 30 + 18 + 5 = 53 (紧挨着+5像素间隙)
             min_radius = self.main_ball.width() / 2 + self.width() / 2 + 5 
             # 最大半径 = 缩小为 120，防止脱离太远
-            max_radius = 150 
+            max_radius = int(self.skin_config.get("layout", {}).get("max_drag_radius", 145))
             clamped_dist = max(min_radius, min(dist, max_radius))
             
             if dist != 0:
@@ -180,6 +170,12 @@ class SubBall(QWidget):
                 sib.angle = self.angle + push_dir * angle_needed
                 sib.update_position_from_main()
                 sib._resolve_overlap(mx, my, min_dist, visited)
+
+    def _color(self, value, fallback):
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            alpha = value[3] if len(value) > 3 else 255
+            return QColor(value[0], value[1], value[2], alpha)
+        return fallback
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:

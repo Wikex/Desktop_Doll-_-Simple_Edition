@@ -13,16 +13,16 @@ class HotkeyLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
-        self.setMinimumHeight(34)
+        self.setMinimumHeight(30)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet("""
             QLineEdit {
-                padding: 8px 12px;
-                font-size: 14px;
+                padding: 5px 10px;
+                font-size: 13px;
                 color: #1e293b;
                 background-color: #f8fafc;
                 border: 1px solid #cbd5e1;
-                border-radius: 6px;
+                border-radius: 4px;
             }
             QLineEdit:hover {
                 border-color: #94a3b8;
@@ -93,12 +93,12 @@ class HotkeyRow(QWidget):
         self.name = name
         self.setProperty("hotkeyRow", True)
         self.layout = QHBoxLayout(self)
-        self.layout.setContentsMargins(0, 6, 0, 6)
-        self.layout.setSpacing(10)
+        self.layout.setContentsMargins(0, 3, 0, 3)
+        self.layout.setSpacing(8)
         
         self.label = QLabel(label_text)
-        self.label.setMinimumWidth(150)
-        self.label.setStyleSheet("font-size: 14px; color: #111827; font-weight: bold;")
+        self.label.setMinimumWidth(130)
+        self.label.setStyleSheet("font-size: 13px; color: #111827; font-weight: bold;")
         
         self.input = HotkeyLineEdit()
         self.input.setText(current_hotkey)
@@ -109,13 +109,13 @@ class HotkeyRow(QWidget):
         self.input.focus_out.connect(self.focus_out)
         
         self.btn_clear = QPushButton("×")
-        self.btn_clear.setFixedSize(24, 24)
-        self.btn_clear.setStyleSheet("border-radius: 12px; background-color: #9ca3af; color: white; font-weight: bold; font-size: 14px;")
+        self.btn_clear.setFixedSize(22, 22)
+        self.btn_clear.setStyleSheet("border-radius: 4px; background-color: #9ca3af; color: white; font-weight: bold; font-size: 13px;")
         self.btn_clear.clicked.connect(self.clear_input)
         self.btn_clear.setCursor(Qt.PointingHandCursor)
         
         self.lbl_valid = QLabel("✓")
-        self.lbl_valid.setFixedSize(24, 24)
+        self.lbl_valid.setFixedSize(22, 22)
         self.lbl_valid.setAlignment(Qt.AlignCenter)
         
         self.layout.addWidget(self.label)
@@ -126,7 +126,7 @@ class HotkeyRow(QWidget):
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        self.setStyleSheet("QWidget[hotkeyRow=\"true\"] { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; }")
+        self.setStyleSheet("QWidget[hotkeyRow=\"true\"] { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 4px; }")
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
@@ -140,9 +140,9 @@ class HotkeyRow(QWidget):
 
     def _update_validity(self, text):
         if text.strip():
-            self.lbl_valid.setStyleSheet("border-radius: 12px; background-color: #22c55e; color: white; font-weight: bold; font-size: 14px;")
+            self.lbl_valid.setStyleSheet("border-radius: 4px; background-color: #22c55e; color: white; font-weight: bold; font-size: 13px;")
         else:
-            self.lbl_valid.setStyleSheet("border-radius: 12px; background-color: #cbd5e1; color: white; font-weight: bold; font-size: 14px;")
+            self.lbl_valid.setStyleSheet("border-radius: 4px; background-color: #cbd5e1; color: white; font-weight: bold; font-size: 13px;")
 
     def clear_input(self):
         self.input.setText("")
@@ -164,7 +164,7 @@ class SettingsDialog(QDialog):
         self.clipboard_mgr = clipboard_mgr
         self.recent_mgr = recent_mgr
         self.setWindowTitle("桌面人偶设置")
-        self.setFixedSize(580, 480)
+        self.setFixedSize(560, 440)
         self.setStyleSheet("""
             QDialog {
                 background-color: #f1f5f9;
@@ -172,16 +172,16 @@ class SettingsDialog(QDialog):
             }
             QLabel {
                 color: #334155;
-                font-size: 14px;
+                font-size: 13px;
             }
             QCheckBox {
-                font-size: 14px;
+                font-size: 13px;
                 color: #334155;
-                spacing: 8px;
+                spacing: 6px;
             }
             QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
+                width: 16px;
+                height: 16px;
                 border-radius: 4px;
                 border: 1px solid #cbd5e1;
                 background-color: #ffffff;
@@ -201,8 +201,8 @@ class SettingsDialog(QDialog):
             QTabBar::tab {
                 background: #f1f5f9;
                 color: #64748b;
-                padding: 10px 20px;
-                font-size: 14px;
+                padding: 7px 12px;
+                font-size: 13px;
                 font-weight: bold;
                 border: 1px solid transparent;
                 border-bottom: none;
@@ -234,14 +234,14 @@ class SettingsDialog(QDialog):
         
     def init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setContentsMargins(12, 12, 12, 12)
         
         self.tabs = QTabWidget()
         
         # Helper for Restore Default Buttons
         def create_restore_btn(callback):
             btn = QPushButton("恢复默认") # 恢复默认设置
-            btn.setStyleSheet("padding: 6px 16px; font-size: 13px; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #475569; border-radius: 6px; font-weight: bold;")
+            btn.setStyleSheet("padding: 5px 12px; font-size: 12px; border: 1px solid #cbd5e1; background-color: #f8fafc; color: #475569; border-radius: 4px; font-weight: bold;")
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(callback)
             
@@ -253,7 +253,7 @@ class SettingsDialog(QDialog):
         # --- Tab 1: General ---
         self.tab_general = QWidget()
         gen_layout = QVBoxLayout(self.tab_general)
-        gen_layout.setSpacing(15)
+        gen_layout.setSpacing(10)
         
         self.chk_hide_ball = QCheckBox("截屏时自动隐藏悬浮球") # 截屏时自动隐藏悬浮球
         self.chk_hide_ball.setChecked(self.current_options.get("hide_ball_when_screenshot", True))
@@ -264,10 +264,10 @@ class SettingsDialog(QDialog):
         browser_label = QLabel("浏览器程序:")
         self.browser_path_input = QLineEdit(self.current_options.get("browser_path", ""))
         self.browser_path_input.setPlaceholderText("留空使用系统默认浏览器")
-        self.browser_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; color: #0f172a;")
+        self.browser_path_input.setStyleSheet("padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #ffffff; color: #0f172a;")
         self.browser_path_input.editingFinished.connect(self._on_browser_path_changed)
         btn_browse_browser = QPushButton("浏览...")
-        btn_browse_browser.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_browser.setStyleSheet("padding: 5px 12px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold;")
         btn_browse_browser.clicked.connect(self._browse_browser_path)
         browser_layout.addWidget(browser_label)
         browser_layout.addWidget(self.browser_path_input)
@@ -281,7 +281,7 @@ class SettingsDialog(QDialog):
         # --- Tab 2: Clipboard ---
         self.tab_clipboard = QWidget()
         clip_layout = QVBoxLayout(self.tab_clipboard)
-        clip_layout.setSpacing(15)
+        clip_layout.setSpacing(10)
         
         self.chk_clip_tracking = QCheckBox("监听剪贴板变化") # 监听剪贴板变化
         self.chk_clip_tracking.setChecked(self.current_options.get("clipboard_tracking_enabled", True))
@@ -294,7 +294,7 @@ class SettingsDialog(QDialog):
         self.spin_limit.setRange(1, 999)
         self.spin_limit.setValue(self.current_options.get("clipboard_max_items", 20))
         self.spin_limit.editingFinished.connect(self._on_clipboard_limit_editing_finished)
-        self.spin_limit.setStyleSheet("padding: 4px 8px; font-size: 14px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff;")
+        self.spin_limit.setStyleSheet("padding: 3px 7px; font-size: 13px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #ffffff;")
         limit_layout.addWidget(limit_label)
         limit_layout.addWidget(self.spin_limit)
         limit_layout.addStretch()
@@ -304,9 +304,9 @@ class SettingsDialog(QDialog):
         pic_label = QLabel("图片缓存目录:") # 图片缓存目录:
         self.pic_path_input = QLineEdit(self.current_options.get("picture_save_path", ""))
         self.pic_path_input.setReadOnly(True)
-        self.pic_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
+        self.pic_path_input.setStyleSheet("padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f8fafc; color: #64748b;")
         btn_browse_pic = QPushButton("浏览...") # 浏览...
-        btn_browse_pic.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_pic.setStyleSheet("padding: 5px 12px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold;")
         btn_browse_pic.clicked.connect(self._browse_pic_path)
         pic_layout.addWidget(pic_label)
         pic_layout.addWidget(self.pic_path_input)
@@ -319,7 +319,7 @@ class SettingsDialog(QDialog):
         self.spin_pic_limit.setRange(1, 999)
         self.spin_pic_limit.setValue(self.current_options.get("clipboard_max_images", 20))
         self.spin_pic_limit.valueChanged.connect(self._on_clipboard_changed)
-        self.spin_pic_limit.setStyleSheet("padding: 4px 8px; font-size: 14px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff;")
+        self.spin_pic_limit.setStyleSheet("padding: 3px 7px; font-size: 13px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #ffffff;")
         pic_limit_layout.addWidget(pic_limit_label)
         pic_limit_layout.addWidget(self.spin_pic_limit)
         pic_limit_layout.addStretch()
@@ -331,15 +331,15 @@ class SettingsDialog(QDialog):
         # --- Tab 3: Video ---
         self.tab_video = QWidget()
         video_tab_layout = QVBoxLayout(self.tab_video)
-        video_tab_layout.setSpacing(15)
+        video_tab_layout.setSpacing(10)
         
         video_layout = QHBoxLayout()
         video_label = QLabel("保存目录:") # 录屏保存目录:
         self.video_path_input = QLineEdit(self.current_options.get("video_save_path", ""))
         self.video_path_input.setReadOnly(True)
-        self.video_path_input.setStyleSheet("padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #f8fafc; color: #64748b;")
+        self.video_path_input.setStyleSheet("padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f8fafc; color: #64748b;")
         btn_browse_video = QPushButton("浏览...") # 浏览...
-        btn_browse_video.setStyleSheet("padding: 6px 14px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold;")
+        btn_browse_video.setStyleSheet("padding: 5px 12px; background-color: #e2e8f0; color: #334155; border: 1px solid #cbd5e1; border-radius: 4px; font-weight: bold;")
         btn_browse_video.clicked.connect(self._browse_video_path)
         video_layout.addWidget(video_label)
         video_layout.addWidget(self.video_path_input)
@@ -355,7 +355,7 @@ class SettingsDialog(QDialog):
             self.combo_video_format.setCurrentText(current_fmt)
         else:
             self.combo_video_format.setCurrentText("mp4")
-        self.combo_video_format.setStyleSheet("padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; color: #0f172a;")
+        self.combo_video_format.setStyleSheet("padding: 3px 7px; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #ffffff; color: #0f172a;")
         self.combo_video_format.currentTextChanged.connect(self._on_video_format_changed)
         
         format_layout.addWidget(format_label)
@@ -370,7 +370,7 @@ class SettingsDialog(QDialog):
         # --- Tab 4: Recent Files ---
         self.tab_recent = QWidget()
         recent_layout = QVBoxLayout(self.tab_recent)
-        recent_layout.setSpacing(15)
+        recent_layout.setSpacing(10)
         
         self.chk_recent_tracking = QCheckBox("监听最近使用变化")
         self.chk_recent_tracking.setChecked(self.current_options.get("recent_tracking_enabled", True))
@@ -383,7 +383,7 @@ class SettingsDialog(QDialog):
         self.spin_recent_limit.setRange(1, 999)
         self.spin_recent_limit.setValue(self.current_options.get("recent_max_items", 30))
         self.spin_recent_limit.editingFinished.connect(self._on_recent_limit_editing_finished)
-        self.spin_recent_limit.setStyleSheet("padding: 4px 8px; font-size: 14px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff;")
+        self.spin_recent_limit.setStyleSheet("padding: 3px 7px; font-size: 13px; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; background-color: #ffffff;")
         recent_limit_layout.addWidget(recent_limit_label)
         recent_limit_layout.addWidget(self.spin_recent_limit)
         recent_limit_layout.addStretch()
@@ -391,7 +391,7 @@ class SettingsDialog(QDialog):
         
         recent_btn_layout = QHBoxLayout()
         btn_manage_excluded = QPushButton("禁止记录管理") # 管理禁止记录...
-        btn_manage_excluded.setStyleSheet("padding: 6px 14px; background-color: #ef4444; color: white; border-radius: 6px; font-weight: bold;")
+        btn_manage_excluded.setStyleSheet("padding: 5px 12px; background-color: #dc2626; color: white; border-radius: 4px; font-weight: bold;")
         btn_manage_excluded.clicked.connect(self._open_recent_excluded_dialog)
         
         recent_btn_layout.addWidget(btn_manage_excluded)
@@ -412,7 +412,7 @@ class SettingsDialog(QDialog):
             failed_text = "以下快捷键被占用，未能注册：" + "、".join(f"{name}={key}" for name, key in failed_hotkeys.items())
             lbl_failed = QLabel(failed_text)
             lbl_failed.setWordWrap(True)
-            lbl_failed.setStyleSheet("padding: 8px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; border-radius: 6px;")
+            lbl_failed.setStyleSheet("padding: 6px; color: #991b1b; background: #fee2e2; border: 1px solid #fecaca; border-radius: 4px;")
             hk_main_layout.addWidget(lbl_failed)
         
         from PySide6.QtWidgets import QScrollArea
@@ -423,7 +423,7 @@ class SettingsDialog(QDialog):
         hk_content = QWidget()
         hk_content.setStyleSheet("background: transparent;")
         hk_layout = QVBoxLayout(hk_content)
-        hk_layout.setSpacing(5)
+        hk_layout.setSpacing(3)
         
         self.screenshot_row = HotkeyRow("screenshot", "系统截屏:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
         self.smart_screenshot_row = HotkeyRow("smart_screenshot", "智能截屏:", self.current_hotkeys.get("smart_screenshot", "")) # 智能截屏:
@@ -452,7 +452,7 @@ class SettingsDialog(QDialog):
         # --- Tab 6: Features ---
         self.tab_features = QWidget()
         feat_main_layout = QHBoxLayout(self.tab_features)
-        feat_main_layout.setSpacing(15)
+        feat_main_layout.setSpacing(10)
         
         # Left Panel (System Features)
         left_panel = QWidget()
@@ -460,11 +460,11 @@ class SettingsDialog(QDialog):
         left_layout.setContentsMargins(0, 0, 0, 0)
         
         lbl_sys = QLabel("系统功能") # 系统功能
-        lbl_sys.setStyleSheet("font-weight: bold; font-size: 14px;")
+        lbl_sys.setStyleSheet("font-weight: bold; font-size: 13px;")
         
         self.sys_search = QLineEdit()
         self.sys_search.setPlaceholderText("搜索系统功能...") # 搜索系统功能...
-        self.sys_search.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
+        self.sys_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
         self.sys_search.textChanged.connect(self._filter_sys_features)
         
         from PySide6.QtWidgets import QScrollArea
@@ -510,11 +510,11 @@ class SettingsDialog(QDialog):
         right_layout.setContentsMargins(0, 0, 0, 0)
         
         lbl_custom = QLabel("自定义软件快捷启动") # 自定义软件快捷启动
-        lbl_custom.setStyleSheet("font-weight: bold; font-size: 14px;")
+        lbl_custom.setStyleSheet("font-weight: bold; font-size: 13px;")
         
         self.custom_search = QLineEdit()
         self.custom_search.setPlaceholderText("搜索自定义软件...") # 搜索自定义软件...
-        self.custom_search.setStyleSheet("padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
+        self.custom_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
         self.custom_search.textChanged.connect(self._filter_custom_features)
         
         custom_scroll = QScrollArea()
@@ -532,7 +532,7 @@ class SettingsDialog(QDialog):
         custom_scroll.setWidget(self.custom_content)
         
         btn_add_app = QPushButton("添加新功能") # 添加新功能
-        btn_add_app.setStyleSheet("padding: 6px 14px; background-color: #3b82f6; color: white; border-radius: 6px; font-weight: bold;")
+        btn_add_app.setStyleSheet("padding: 5px 12px; background-color: #2563eb; color: white; border-radius: 4px; font-weight: bold;")
         btn_add_app.clicked.connect(self._add_custom_app_dialog)
         
         right_layout.addWidget(lbl_custom)

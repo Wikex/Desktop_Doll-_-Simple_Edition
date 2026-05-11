@@ -9,8 +9,9 @@ class FloatingBall(QWidget):
     right_clicked = Signal()
     position_changed = Signal(int, int)
 
-    def __init__(self):
+    def __init__(self, skin_config=None):
         super().__init__()
+        self.skin_config = skin_config or {}
         self.init_ui()
         
         # Variables for dragging
@@ -28,25 +29,29 @@ class FloatingBall(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         
-        # Fixed size
-        self.setFixedSize(60, 60)
+        size = self.skin_config.get("main_ball", {}).get("size", [56, 56])
+        self.setFixedSize(int(size[0]), int(size[1]))
         
         # Initial position: bottom right (offset a bit)
         # We will position it when showing to avoid multiple screen issues
         
     def paintEvent(self, event):
-        from PySide6.QtGui import QRadialGradient
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
-        # Create a modern 3D-like radial gradient
-        gradient = QRadialGradient(self.width() / 3, self.height() / 3, self.width())
-        gradient.setColorAt(0, QColor(100, 180, 255, 230))
-        gradient.setColorAt(1, QColor(20, 100, 220, 210))
-        
-        painter.setBrush(gradient)
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(0, 0, self.width(), self.height())
+
+        cfg = self.skin_config.get("main_ball", {})
+        color = self._color(cfg.get("color"), QColor(37, 99, 235, 230))
+        border = self._color(cfg.get("border_color"), QColor(255, 255, 255, 90))
+
+        painter.setBrush(color)
+        painter.setPen(border)
+        painter.drawEllipse(1, 1, self.width() - 2, self.height() - 2)
+
+    def _color(self, value, fallback):
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            alpha = value[3] if len(value) > 3 else 255
+            return QColor(value[0], value[1], value[2], alpha)
+        return fallback
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:

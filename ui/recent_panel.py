@@ -6,6 +6,15 @@ from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QIcon
 from ui.recent_dialogs import ExcludedExtensionsDialog, ExtensionFilterDialog
 
+PANEL_STYLE = "RecentPanel { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #0f172a; }"
+LIST_STYLE = "QListWidget { border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; outline: none; }"
+ITEM_STYLE = "RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; } RecentItemWidget:hover { border: 1px solid #3b82f6; }"
+PRIMARY_BUTTON_STYLE = "QPushButton { background-color: #2563eb; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #1d4ed8; }"
+STATUS_ON_STYLE = "QPushButton { background-color: #16a34a; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #15803d; }"
+STATUS_OFF_STYLE = "QPushButton { background-color: #64748b; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #475569; }"
+DANGER_BUTTON_STYLE = "QPushButton { background-color: #dc2626; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #b91c1c; }"
+
+
 class RecentListWidget(QListWidget):
     item_right_clicked = Signal(object)
     order_changed = Signal(list)
@@ -87,16 +96,17 @@ class RecentItemWidget(QWidget):
         self.item_data = item_data
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet("RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } RecentItemWidget:hover { border: 1px solid #3b82f6; }")
+        self.setStyleSheet(ITEM_STYLE)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(6)
         
         self.btn_delete = QPushButton("✖")
-        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setFixedSize(22, 22)
         self.btn_delete.setStyleSheet("""
-            QPushButton { border-radius: 12px; background-color: #ff4c4c; color: white; font-weight: bold; font-size: 12px; }
-            QPushButton:hover { background-color: #ff0000; }
+            QPushButton { border-radius: 4px; background-color: #dc2626; color: white; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #b91c1c; }
         """)
         self.btn_delete.setCursor(Qt.PointingHandCursor)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
@@ -111,17 +121,17 @@ class RecentItemWidget(QWidget):
         icon = QFileIconProvider().icon(QFileInfo(path))
         
         icon_label = QLabel()
-        icon_label.setPixmap(icon.pixmap(24, 24))
+        icon_label.setPixmap(icon.pixmap(22, 22))
         layout.addWidget(icon_label)
         
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
         
         name_label = QLabel()
-        name_label.setStyleSheet("color: #000000; font-size: 13px; font-weight: bold; background: transparent;")
+        name_label.setStyleSheet("color: #0f172a; font-size: 12px; font-weight: bold; background: transparent;")
         
         path_label = QLabel()
-        path_label.setStyleSheet("color: #666666; font-size: 11px; background: transparent;")
+        path_label.setStyleSheet("color: #64748b; font-size: 11px; background: transparent;")
         
         self.hover_timer = QTimer(self)
         self.hover_timer.setSingleShot(True)
@@ -132,9 +142,8 @@ class RecentItemWidget(QWidget):
         name_fm = QFontMetrics(name_label.font())
         path_fm = QFontMetrics(path_label.font())
         
-        # Max width 170 to account for delete button and icon and prevent clipping right border
-        elided_name = name_fm.elidedText(name, Qt.ElideRight, 170)
-        elided_path = path_fm.elidedText(path, Qt.ElideRight, 170)
+        elided_name = name_fm.elidedText(name, Qt.ElideRight, 160)
+        elided_path = path_fm.elidedText(path, Qt.ElideRight, 160)
         
         name_label.setText(elided_name)
         path_label.setText(elided_path)
@@ -193,8 +202,9 @@ class RecentPanel(QWidget):
     history_cleared = Signal()
     history_reordered = Signal(list)
 
-    def __init__(self):
+    def __init__(self, skin_config=None):
         super().__init__()
+        self.skin_config = skin_config or {}
         self._is_dragging = False
         self._drag_start_pos = None
         self._relative_offset = None
@@ -229,26 +239,31 @@ class RecentPanel(QWidget):
     def init_ui(self):
         self.setWindowTitle("最近使用")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
-        self.setFixedSize(320, 420)
-        self.setStyleSheet("RecentPanel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #000000; }")
+        panel_cfg = self.skin_config.get("panel", {})
+        size = panel_cfg.get("size", [300, 390])
+        margin = int(panel_cfg.get("margin", 8))
+        self.setFixedSize(int(size[0]), int(size[1]))
+        self.setStyleSheet(PANEL_STYLE)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(7)
         
         title_layout = QHBoxLayout()
+        title_layout.setSpacing(6)
         
         self.btn_excluded = QPushButton("禁止记录")
-        self.btn_excluded.setFixedSize(70, 28)
+        self.btn_excluded.setFixedSize(68, 24)
         self.btn_excluded.setCursor(Qt.PointingHandCursor)
-        self.btn_excluded.setStyleSheet("QPushButton { background-color: #ef4444; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #dc2626; }")
+        self.btn_excluded.setStyleSheet(DANGER_BUTTON_STYLE)
         self.btn_excluded.clicked.connect(self._on_excluded_clicked)
         
         title = QLabel("最近使用")
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #333;")
+        title.setStyleSheet("font-weight: bold; font-size: 13px; color: #0f172a;")
         
         btn_close = QPushButton("×")
         btn_close.setFixedSize(24, 24)
-        btn_close.setStyleSheet("QPushButton { background-color: transparent; border: none; color: #777; font-weight: bold; font-size: 18px; } QPushButton:hover { color: #ff0000; }")
+        btn_close.setStyleSheet("QPushButton { background-color: transparent; border: none; color: #64748b; font-weight: bold; font-size: 17px; } QPushButton:hover { color: #dc2626; }")
         btn_close.clicked.connect(self.hide)
         
         title_layout.addWidget(self.btn_excluded)
@@ -259,7 +274,7 @@ class RecentPanel(QWidget):
         layout.addLayout(title_layout)
         
         self.list_widget = RecentListWidget()
-        self.list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }")
+        self.list_widget.setStyleSheet(LIST_STYLE)
         self.list_widget.itemDoubleClicked.connect(self._on_item_clicked)
         self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
         self.list_widget.order_changed.connect(self.history_reordered.emit)
@@ -268,19 +283,19 @@ class RecentPanel(QWidget):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
         
         self.btn_filter = QPushButton("查看")
-        self.btn_filter.setStyleSheet("QPushButton { background-color: #3b82f6; color: white; border-radius: 5px; padding: 6px 12px; font-weight: bold; } QPushButton:hover { background-color: #2563eb; }")
+        self.btn_filter.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self.btn_filter.clicked.connect(self._on_filter_clicked)
         
         self.btn_toggle_tracking = QPushButton("记录")
-        self.btn_toggle_tracking.setFixedSize(60, 28)
+        self.btn_toggle_tracking.setFixedSize(58, 24)
         self.btn_toggle_tracking.setCursor(Qt.PointingHandCursor)
-        self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #45a049; }")
+        self.btn_toggle_tracking.setStyleSheet(STATUS_ON_STYLE)
         self.btn_toggle_tracking.clicked.connect(self.toggle_tracking_clicked.emit)
         
         self.btn_clear_all = QPushButton("清空")
-        self.btn_clear_all.setFixedSize(50, 28)
+        self.btn_clear_all.setFixedSize(48, 24)
         self.btn_clear_all.setCursor(Qt.PointingHandCursor)
-        self.btn_clear_all.setStyleSheet("QPushButton { background-color: #ff4c4c; color: white; border-radius: 5px; padding: 6px; font-weight: bold; font-size: 13px; } QPushButton:hover { background-color: #ff0000; }")
+        self.btn_clear_all.setStyleSheet(DANGER_BUTTON_STYLE)
         self.btn_clear_all.clicked.connect(self._on_clear_clicked)
         
         bottom_layout.addWidget(self.btn_filter)
@@ -294,10 +309,10 @@ class RecentPanel(QWidget):
     def set_tracking_enabled(self, enabled):
         if enabled:
             self.btn_toggle_tracking.setText("记录中")
-            self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #45a049; }")
+            self.btn_toggle_tracking.setStyleSheet(STATUS_ON_STYLE)
         else:
             self.btn_toggle_tracking.setText("已暂停")
-            self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #888888; color: white; border-radius: 5px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #777777; }")
+            self.btn_toggle_tracking.setStyleSheet(STATUS_OFF_STYLE)
 
     def set_excluded_extensions(self, exts):
         self._excluded_extensions = exts

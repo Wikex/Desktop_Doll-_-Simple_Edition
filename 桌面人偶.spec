@@ -9,6 +9,7 @@ a = Analysis(
         ('app_icon.ico', '.'),
         ('qt.conf', '.'),
         ('config.json', '.'),
+        ('skins', 'skins'),
     ],
     hiddenimports=[
         'win32com.client',

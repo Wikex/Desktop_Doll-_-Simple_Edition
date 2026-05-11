@@ -13,8 +13,9 @@ class ScreenshotMask(QDialog):
     finished = Signal()
     rect_selected = Signal(object)
 
-    def __init__(self, parent=None, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None):
+    def __init__(self, parent=None, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None, show_debug_overlay=False):
         self.mode = mode
+        self.show_debug_overlay = show_debug_overlay
         super().__init__(parent)
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
@@ -207,16 +208,16 @@ class ScreenshotMask(QDialog):
             painter.setPen(QPen(QColor(0, 120, 215), 2))
             painter.drawRect(local_drag_rect)
 
-        # Debug info
-        painter.setPen(QPen(QColor(255, 255, 255), 1))
-        debug_text = f"Pos: {self.current_pos_global.x() if self.current_pos_global else 0}, {self.current_pos_global.y() if self.current_pos_global else 0}"
-        if getattr(self, 'last_uia_rect', None):
-            debug_text += f" | UIA: {self.last_uia_rect.width()}x{self.last_uia_rect.height()}"
-        if getattr(self, 'last_ew_rect', None):
-            debug_text += f" | EW: {self.last_ew_rect.width()}x{self.last_ew_rect.height()}"
-        
-        if self.current_pos_global:
-            painter.drawText(self.current_pos_global.x() - offset.x() + 15, self.current_pos_global.y() - offset.y() + 15, debug_text)
+        if self.show_debug_overlay:
+            painter.setPen(QPen(QColor(255, 255, 255), 1))
+            debug_text = f"Pos: {self.current_pos_global.x() if self.current_pos_global else 0}, {self.current_pos_global.y() if self.current_pos_global else 0}"
+            if getattr(self, 'last_uia_rect', None):
+                debug_text += f" | UIA: {self.last_uia_rect.width()}x{self.last_uia_rect.height()}"
+            if getattr(self, 'last_ew_rect', None):
+                debug_text += f" | EW: {self.last_ew_rect.width()}x{self.last_ew_rect.height()}"
+
+            if self.current_pos_global:
+                painter.drawText(self.current_pos_global.x() - offset.x() + 15, self.current_pos_global.y() - offset.y() + 15, debug_text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

@@ -7,6 +7,15 @@ from PySide6.QtGui import QMouseEvent, QPixmap, QImage
 import base64
 from utils.logger import log_exception
 
+PANEL_STYLE = "Panel { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #0f172a; }"
+LIST_STYLE = "QListWidget { border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; outline: none; }"
+ITEM_STYLE = "ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; } ClipboardItemWidget:hover { border: 1px solid #3b82f6; }"
+SMALL_BUTTON_STYLE = "QPushButton { border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f1f5f9; color: #334155; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #e2e8f0; }"
+STATUS_ON_STYLE = "QPushButton { background-color: #16a34a; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #15803d; }"
+STATUS_OFF_STYLE = "QPushButton { background-color: #64748b; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #475569; }"
+DANGER_BUTTON_STYLE = "QPushButton { background-color: #dc2626; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #b91c1c; }"
+
+
 class PinnedImageDialog(QWidget):
     def __init__(self, pixmap, item_data=None, parent=None):
         super().__init__(parent)
@@ -107,14 +116,14 @@ class DetailsDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("剪贴板内容详情")
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowStaysOnTopHint)
-        self.resize(500, 400)
+        self.resize(460, 360)
         layout = QVBoxLayout(self)
         
         text = item_data.get("value", "") if isinstance(item_data, dict) else str(item_data)
         text_edit = QPlainTextEdit()
         text_edit.setReadOnly(True)
         text_edit.setPlainText(text)
-        text_edit.setStyleSheet("font-size: 14px; color: #1e293b; background-color: #f8fafc; border: none;")
+        text_edit.setStyleSheet("font-size: 13px; color: #1e293b; background-color: #f8fafc; border: 1px solid #e2e8f0;")
         layout.addWidget(text_edit)
 
 class ClipboardItemWidget(QWidget):
@@ -126,7 +135,7 @@ class ClipboardItemWidget(QWidget):
         self.full_item = full_item
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet("ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; } ClipboardItemWidget:hover { border: 1px solid #3b82f6; }")
+        self.setStyleSheet(ITEM_STYLE)
         
         self.hover_timer = QTimer(self)
         self.hover_timer.setSingleShot(True)
@@ -135,23 +144,24 @@ class ClipboardItemWidget(QWidget):
         self.full_tooltip_text = ""
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(5)
         
         self.btn_view = QPushButton("🔍") # View details
-        self.btn_view.setFixedSize(24, 24)
+        self.btn_view.setFixedSize(22, 22)
         self.btn_view.setStyleSheet("""
-            QPushButton { border-radius: 12px; background-color: #4CAF50; color: white; font-weight: bold; font-size: 12px; }
-            QPushButton:hover { background-color: #45a049; }
+            QPushButton { border-radius: 4px; background-color: #16a34a; color: white; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #15803d; }
         """)
         self.btn_view.setCursor(Qt.PointingHandCursor)
         self.btn_view.clicked.connect(self._on_view_clicked)
         layout.addWidget(self.btn_view)
         
         self.btn_delete = QPushButton("✖")
-        self.btn_delete.setFixedSize(24, 24)
+        self.btn_delete.setFixedSize(22, 22)
         self.btn_delete.setStyleSheet("""
-            QPushButton { border-radius: 12px; background-color: #ff4c4c; color: white; font-weight: bold; font-size: 12px; }
-            QPushButton:hover { background-color: #ff0000; }
+            QPushButton { border-radius: 4px; background-color: #dc2626; color: white; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #b91c1c; }
         """)
         self.btn_delete.setCursor(Qt.PointingHandCursor)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
@@ -174,10 +184,9 @@ class ClipboardItemWidget(QWidget):
                 except Exception as e:
                     log_exception(f"Failed to decode clipboard image preview: {e}")
             pixmap = QPixmap.fromImage(image)
-            # 缩放至最大高度 60 像素，保持比例
-            pixmap = pixmap.scaledToHeight(60, Qt.SmoothTransformation)
-            if pixmap.width() > 170:
-                pixmap = pixmap.scaled(170, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pixmap = pixmap.scaledToHeight(54, Qt.SmoothTransformation)
+            if pixmap.width() > 160:
+                pixmap = pixmap.scaled(160, 54, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.label = QLabel()
             self.full_tooltip_text = f"图片路径: {val}"
             self.label.setPixmap(pixmap)
@@ -199,10 +208,10 @@ class ClipboardItemWidget(QWidget):
             
             # Check if text contains URL to style it differently
             if re.search(r'(https?://[^\s]+)', text):
-                self.label.setStyleSheet("color: #2563eb; font-size: 13px; background: transparent; text-decoration: underline;")
+                self.label.setStyleSheet("color: #2563eb; font-size: 12px; background: transparent; text-decoration: underline;")
                 self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 直接打开网址)"
             else:
-                self.label.setStyleSheet("color: #000000; font-size: 13px; background: transparent;")
+                self.label.setStyleSheet("color: #0f172a; font-size: 12px; background: transparent;")
                 self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 快捷搜索此内容)"
             
             
@@ -215,7 +224,7 @@ class ClipboardItemWidget(QWidget):
                 display_text = display_text[:100] + "..."
             
             fm = QFontMetrics(self.label.font())
-            max_width = 170
+            max_width = 160
             
             if fm.horizontalAdvance(display_text) <= max_width:
                 final_text = display_text
@@ -371,8 +380,9 @@ class Panel(QWidget):
     toggle_text_tracking_clicked = Signal()
     toggle_image_tracking_clicked = Signal()
 
-    def __init__(self):
+    def __init__(self, skin_config=None):
         super().__init__()
+        self.skin_config = skin_config or {}
         self._is_dragging = False
         self._drag_start_pos = None
         self._relative_offset = None
@@ -405,37 +415,42 @@ class Panel(QWidget):
     def init_ui(self):
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus)
-        self.setFixedSize(320, 420)
-        self.setStyleSheet("Panel { background-color: #f0f0f0; border: 1px solid #ccc; border-radius: 10px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #000000; }")
+        panel_cfg = self.skin_config.get("panel", {})
+        size = panel_cfg.get("size", [300, 390])
+        margin = int(panel_cfg.get("margin", 8))
+        self.setFixedSize(int(size[0]), int(size[1]))
+        self.setStyleSheet(PANEL_STYLE)
         
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(margin, margin, margin, margin)
+        layout.setSpacing(7)
         
         title_layout = QHBoxLayout()
+        title_layout.setSpacing(6)
         
         # Tracking Toggle Buttons (Text/Image)
         self.btn_track_text = QPushButton("存文")
-        self.btn_track_text.setFixedSize(40, 28)
+        self.btn_track_text.setFixedSize(38, 24)
         self.btn_track_text.setCheckable(True)
         self.btn_track_text.setCursor(Qt.PointingHandCursor)
         self.btn_track_text.setToolTip("开启/暂停文字监听")
-        self.btn_track_text.setStyleSheet("QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #4CAF50; color: white; border-color: #45a049; }")
+        self.btn_track_text.setStyleSheet(SMALL_BUTTON_STYLE + " QPushButton:checked { background-color: #16a34a; color: white; border-color: #16a34a; }")
         self.btn_track_text.clicked.connect(self.toggle_text_tracking_clicked.emit)
         
         self.btn_track_image = QPushButton("存图")
-        self.btn_track_image.setFixedSize(40, 28)
+        self.btn_track_image.setFixedSize(38, 24)
         self.btn_track_image.setCheckable(True)
         self.btn_track_image.setCursor(Qt.PointingHandCursor)
         self.btn_track_image.setToolTip("开启/暂停图片监听")
-        self.btn_track_image.setStyleSheet("QPushButton { border: 1px solid #bbb; border-radius: 5px; background-color: #e0e0e0; font-weight: bold; font-size: 14px; color: #333; } QPushButton:checked { background-color: #2196F3; color: white; border-color: #1E88E5; }")
+        self.btn_track_image.setStyleSheet(SMALL_BUTTON_STYLE + " QPushButton:checked { background-color: #2563eb; color: white; border-color: #2563eb; }")
         self.btn_track_image.clicked.connect(self.toggle_image_tracking_clicked.emit)
         
         title = QLabel("剪贴板历史")
-        title.setStyleSheet("font-weight: bold; font-size: 14px; color: #333;")
+        title.setStyleSheet("font-weight: bold; font-size: 13px; color: #0f172a;")
         
         btn_close = QPushButton("×")
         btn_close.setFixedSize(24, 24)
-        btn_close.setStyleSheet("QPushButton { background-color: transparent; border: none; color: #777; font-weight: bold; font-size: 18px; } QPushButton:hover { color: #ff0000; }")
+        btn_close.setStyleSheet("QPushButton { background-color: transparent; border: none; color: #64748b; font-weight: bold; font-size: 17px; } QPushButton:hover { color: #dc2626; }")
         btn_close.clicked.connect(self.hide)
         
         title_layout.addWidget(self.btn_track_text)
@@ -446,7 +461,7 @@ class Panel(QWidget):
         title_layout.addWidget(btn_close)
         layout.addLayout(title_layout)
         self.list_widget = ClipboardListWidget()
-        self.list_widget.setStyleSheet("QListWidget { border: 1px solid #ddd; background-color: white; color: #000000; }")
+        self.list_widget.setStyleSheet(LIST_STYLE)
         self.list_widget.itemClicked.connect(self._on_item_clicked)
         self.list_widget.item_right_clicked.connect(self._on_item_right_clicked)
         self.list_widget.item_ctrl_left_clicked.connect(self._on_item_ctrl_left_clicked)
@@ -459,22 +474,22 @@ class Panel(QWidget):
         self.btn_filter_text.setCheckable(True)
         self.btn_filter_text.setChecked(True)
         self.btn_filter_text.setToolTip("显示/隐藏文本记录")
-        self.btn_filter_text.setStyleSheet("QPushButton { background-color: #e0e0e0; color: #333; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:checked { background-color: #4CAF50; color: white; }")
+        self.btn_filter_text.setStyleSheet("QPushButton { background-color: #e2e8f0; color: #334155; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:checked { background-color: #16a34a; color: white; }")
         self.btn_filter_text.clicked.connect(self._apply_filter)
         
         self.btn_filter_image = QPushButton("看图")
         self.btn_filter_image.setCheckable(True)
         self.btn_filter_image.setChecked(True)
         self.btn_filter_image.setToolTip("显示/隐藏图片记录")
-        self.btn_filter_image.setStyleSheet("QPushButton { background-color: #e0e0e0; color: #333; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:checked { background-color: #2196F3; color: white; }")
+        self.btn_filter_image.setStyleSheet("QPushButton { background-color: #e2e8f0; color: #334155; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:checked { background-color: #2563eb; color: white; }")
         self.btn_filter_image.clicked.connect(self._apply_filter)
 
         self.btn_toggle_tracking = QPushButton("正在记录")
-        self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #45a049; }")
+        self.btn_toggle_tracking.setStyleSheet(STATUS_ON_STYLE)
         self.btn_toggle_tracking.clicked.connect(self.toggle_tracking_clicked.emit)
         
         self.btn_clear_all = QPushButton("清空")
-        self.btn_clear_all.setStyleSheet("QPushButton { background-color: #ff4c4c; color: white; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #ff0000; }")
+        self.btn_clear_all.setStyleSheet(DANGER_BUTTON_STYLE)
         self.btn_clear_all.clicked.connect(self._on_clear_all_clicked)
         
         bottom_layout.addWidget(self.btn_filter_text)
@@ -493,10 +508,10 @@ class Panel(QWidget):
     def set_tracking_enabled(self, enabled):
         if enabled:
             self.btn_toggle_tracking.setText("暂停记录")
-            self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #45a049; }")
+            self.btn_toggle_tracking.setStyleSheet(STATUS_ON_STYLE)
         else:
             self.btn_toggle_tracking.setText("继续记录")
-            self.btn_toggle_tracking.setStyleSheet("QPushButton { background-color: #888888; color: white; border-radius: 5px; padding: 8px; font-weight: bold; } QPushButton:hover { background-color: #777777; }")
+            self.btn_toggle_tracking.setStyleSheet(STATUS_OFF_STYLE)
 
     def _on_clear_all_clicked(self):
         if not self._current_history:

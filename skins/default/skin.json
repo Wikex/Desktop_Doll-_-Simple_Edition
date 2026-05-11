@@ -1,0 +1,121 @@
+{
+    "name": "简洁性能样式",
+    "type": "code",
+    "performance": {
+        "animations": false,
+        "use_gradients": false,
+        "screenshot_debug_overlay": false
+    },
+    "main_ball": {
+        "size": [
+            56,
+            56
+        ],
+        "color": [
+            37,
+            99,
+            235,
+            230
+        ],
+        "border_color": [
+            255,
+            255,
+            255,
+            90
+        ]
+    },
+    "sub_ball": {
+        "size": [
+            34,
+            34
+        ],
+        "font_size": 10,
+        "icon_size": 20,
+        "border_color": [
+            255,
+            255,
+            255,
+            80
+        ],
+        "colors": {
+            "clipboard": [
+                245,
+                158,
+                11,
+                230
+            ],
+            "screenshot": [
+                34,
+                197,
+                94,
+                230
+            ],
+            "notebook": [
+                59,
+                130,
+                246,
+                230
+            ],
+            "smart_screenshot": [
+                239,
+                68,
+                68,
+                230
+            ],
+            "record": [
+                220,
+                38,
+                38,
+                230
+            ],
+            "record_active": [
+                34,
+                197,
+                94,
+                230
+            ],
+            "search": [
+                124,
+                58,
+                237,
+                230
+            ],
+            "recent": [
+                20,
+                184,
+                166,
+                230
+            ],
+            "custom": [
+                100,
+                116,
+                139,
+                230
+            ]
+        }
+    },
+    "layout": {
+        "first_ring_radius": 54,
+        "ring_spacing": 42,
+        "ball_gap": 42,
+        "max_drag_radius": 145
+    },
+    "panel": {
+        "size": [
+            300,
+            390
+        ],
+        "radius": 6,
+        "margin": 8,
+        "item_radius": 4,
+        "item_height": 58
+    },
+    "settings": {
+        "size": [
+            560,
+            440
+        ],
+        "radius": 6,
+        "compact": true
+    }
+}

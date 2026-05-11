@@ -45,6 +45,7 @@ from core.notebook import NotebookManager
 from utils.config import load_options, save_option
 from utils.logger import log_exception, log_message
 from core.recent import RecentManager
+from core.skin_manager import SkinManager
 from ui.recent_panel import RecentPanel
 import sys
 import math
@@ -85,35 +86,38 @@ class FloatingAssistant:
         if os.path.exists(icon_path):
             self.app.setWindowIcon(QIcon(icon_path))
 
-        # Initialize UI
-        self.ball = FloatingBall()
-        self.tray = TrayIcon()
         self.options = load_options()
+        self.skin_mgr = SkinManager()
+        self.skin_config = self.skin_mgr.get_skin_config()
+
+        # Initialize UI
+        self.ball = FloatingBall(skin_config=self.skin_config)
+        self.tray = TrayIcon()
         self.clipboard_mgr = ClipboardManager(max_items=self.options.get("clipboard_max_items", 20))
         self.hotkey_mgr = HotkeyManager(self.app, load_hotkeys())
 
         # Sub Balls
         self.sub_balls = []
         
-        self.clipboard_ball = SubBall(self.ball, text="📋", radius=80, angle=0, tooltip="\u526a\u8d34\u677f\u5386\u53f2", bg_color=QColor(255, 165, 0, 230))
+        self.clipboard_ball = SubBall(self.ball, text="📋", radius=80, angle=0, tooltip="\u526a\u8d34\u677f\u5386\u53f2", bg_color=self._sub_ball_color("clipboard", QColor(255, 165, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.clipboard_ball)
 
-        self.screenshot_ball = SubBall(self.ball, text="✂️", radius=80, angle=0, tooltip="\u7cfb\u7edf\u622a\u56fe", bg_color=QColor(50, 200, 50, 230))
+        self.screenshot_ball = SubBall(self.ball, text="✂️", radius=80, angle=0, tooltip="\u7cfb\u7edf\u622a\u56fe", bg_color=self._sub_ball_color("screenshot", QColor(50, 200, 50, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.screenshot_ball)
 
-        self.notebook_ball = SubBall(self.ball, text="📝", radius=80, angle=0, tooltip="\u8bb0\u4e8b\u672c", bg_color=QColor(50, 150, 250, 230))
+        self.notebook_ball = SubBall(self.ball, text="📝", radius=80, angle=0, tooltip="\u8bb0\u4e8b\u672c", bg_color=self._sub_ball_color("notebook", QColor(50, 150, 250, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.notebook_ball)
 
-        self.smart_screenshot_ball = SubBall(self.ball, text="🎯", radius=80, angle=0, tooltip="\u667a\u80fd\u622a\u56fe", bg_color=QColor(255, 69, 0, 230))
+        self.smart_screenshot_ball = SubBall(self.ball, text="🎯", radius=80, angle=0, tooltip="\u667a\u80fd\u622a\u56fe", bg_color=self._sub_ball_color("smart_screenshot", QColor(255, 69, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.smart_screenshot_ball)
 
-        self.record_ball = SubBall(self.ball, text="🎥", radius=80, angle=0, tooltip="\u5f55\u5c4f", bg_color=QColor(255, 0, 0, 230))
+        self.record_ball = SubBall(self.ball, text="🎥", radius=80, angle=0, tooltip="\u5f55\u5c4f", bg_color=self._sub_ball_color("record", QColor(255, 0, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.record_ball)
 
-        self.search_ball = SubBall(self.ball, text="\U0001f50d", radius=80, angle=0, tooltip="\u641c\u7d22", bg_color=QColor(156, 39, 176, 230))
+        self.search_ball = SubBall(self.ball, text="\U0001f50d", radius=80, angle=0, tooltip="\u641c\u7d22", bg_color=self._sub_ball_color("search", QColor(156, 39, 176, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.search_ball)
 
-        self.recent_ball = SubBall(self.ball, text="🕘", radius=80, angle=0, tooltip="最近使用", bg_color=QColor(0, 150, 136, 230))
+        self.recent_ball = SubBall(self.ball, text="🕘", radius=80, angle=0, tooltip="最近使用", bg_color=self._sub_ball_color("recent", QColor(0, 150, 136, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.recent_ball)
 
         # --- Load custom apps ---
@@ -124,7 +128,7 @@ class FloatingAssistant:
             if not app.get('enabled', True):
                 continue
             icon = QFileIconProvider().icon(QFileInfo(app["path"]))
-            ball = SubBall(self.ball, text="", radius=80, angle=0, tooltip=app["name"], bg_color=QColor(100, 100, 100, 230), icon=icon)
+            ball = SubBall(self.ball, text="", radius=80, angle=0, tooltip=app["name"], bg_color=self._sub_ball_color("custom", QColor(100, 100, 100, 230)), icon=icon, skin_config=self.skin_config)
             ball.custom_app_path = app["path"]
             ball.clicked.connect(lambda p=app["path"]: os.startfile(p) if hasattr(os, "startfile") else None)
             self.sub_balls.append(ball)
@@ -135,8 +139,8 @@ class FloatingAssistant:
         self.notebook_mgr = NotebookManager()
         self.notebook_panel = NotebookPanel()
         self.recent_mgr = RecentManager()
-        self.recent_panel = RecentPanel()
-        self.panel = Panel()
+        self.recent_panel = RecentPanel(skin_config=self.skin_config)
+        self.panel = Panel(skin_config=self.skin_config)
         self.is_recording = False
         self.recorder_thread = None
         self.recording_border = None
@@ -273,14 +277,15 @@ class FloatingAssistant:
         # Concentric circles layout algorithm
         total_balls = len(self.sub_balls)
         import math
-        # 初始内圈半径设置紧凑（主球半径30 + 子球半径18 + 间隙）= 55
-        current_circle_radius = 55
+        layout_cfg = self.skin_config.get("layout", {})
+        current_circle_radius = int(layout_cfg.get("first_ring_radius", 55))
+        ball_gap = max(1, int(layout_cfg.get("ball_gap", 45)))
+        ring_spacing = max(1, int(layout_cfg.get("ring_spacing", 45)))
         balls_placed = 0
         
         while balls_placed < total_balls:
             # Calculate max balls that can fit in the current circle
-            # Assuming ball diameter + gap = ~45 pixels
-            max_in_circle = max(1, int(2 * math.pi * current_circle_radius / 45))
+            max_in_circle = max(1, int(2 * math.pi * current_circle_radius / ball_gap))
             balls_in_this_circle = min(max_in_circle, total_balls - balls_placed)
             
             for i in range(balls_in_this_circle):
@@ -292,8 +297,17 @@ class FloatingAssistant:
                 b.siblings = [sib for sib in self.sub_balls if sib != b]
                 
             balls_placed += balls_in_this_circle
-            # 每多一圈向外扩展 45 像素
-            current_circle_radius += 45
+            current_circle_radius += ring_spacing
+
+    def _sub_ball_color(self, name, fallback):
+        value = self.skin_config.get("sub_ball", {}).get("colors", {}).get(name)
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            alpha = value[3] if len(value) > 3 else 255
+            return QColor(value[0], value[1], value[2], alpha)
+        return fallback
+
+    def _screenshot_debug_overlay(self):
+        return bool(self.skin_config.get("performance", {}).get("screenshot_debug_overlay", False))
 
     def toggle_sub_balls(self):
         # When main ball is clicked, show/hide the surrounding sub balls
@@ -432,7 +446,7 @@ class FloatingAssistant:
                 return
             self._hide_balls_for_screenshot()
             active_win = QApplication.activeModalWidget() or QApplication.activeWindow()
-            self.screenshot_mask = ScreenshotMask(parent=active_win, mode="record")
+            self.screenshot_mask = ScreenshotMask(parent=active_win, mode="record", show_debug_overlay=self._screenshot_debug_overlay())
             self.screenshot_mask.rect_selected.connect(self._on_record_rect_selected)
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
             self.screenshot_mask.exec()
@@ -456,8 +470,7 @@ class FloatingAssistant:
             return
 
         self.is_recording = True
-        from PySide6.QtGui import QColor
-        self.record_ball.bg_color = QColor(50, 200, 50, 230) # Green indicating recording
+        self.record_ball.bg_color = self._sub_ball_color("record_active", QColor(50, 200, 50, 230))
         self.record_ball.update()
         fmt = self.options.get("video_save_format", "mp4")
         self.recorder_thread = ScreenRecorderThread(rect, self.video_save_path, save_format=fmt)
@@ -475,8 +488,7 @@ class FloatingAssistant:
 
     def _reset_recording_ui(self):
         self.is_recording = False
-        from PySide6.QtGui import QColor
-        self.record_ball.bg_color = QColor(255, 0, 0, 230) # Back to Red
+        self.record_ball.bg_color = self._sub_ball_color("record", QColor(255, 0, 0, 230))
         self.record_ball.update()
         if self.recording_border:
             self.recording_border.hide()
@@ -558,6 +570,7 @@ class FloatingAssistant:
                 all_rects_global=all_rects_global,
                 virtual_screen_left=virtual_left,
                 virtual_screen_top=virtual_top,
+                show_debug_overlay=self._screenshot_debug_overlay(),
             )
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
             self.screenshot_mask.exec()
@@ -768,7 +781,7 @@ class FloatingAssistant:
             if not app.get('enabled', True):
                 continue
             icon = QFileIconProvider().icon(QFileInfo(app["path"]))
-            ball = SubBall(self.ball, text="", radius=80, angle=0, tooltip=app["name"], bg_color=QColor(100, 100, 100, 230), icon=icon)
+            ball = SubBall(self.ball, text="", radius=80, angle=0, tooltip=app["name"], bg_color=self._sub_ball_color("custom", QColor(100, 100, 100, 230)), icon=icon, skin_config=self.skin_config)
             ball.custom_app_path = app["path"]
             ball.clicked.connect(lambda p=app["path"]: os.startfile(p) if hasattr(os, "startfile") else None)
             self.sub_balls.append(ball)
