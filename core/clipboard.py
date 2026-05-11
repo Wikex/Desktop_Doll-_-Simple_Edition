@@ -242,6 +242,18 @@ class ClipboardManager(QObject):
         gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HANDLE]
         user32.GetDC.restype = wintypes.HDC
         user32.GetDC.argtypes = [wintypes.HWND]
+        user32.ReleaseDC.restype = ctypes.c_int
+        user32.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+        gdi32.DeleteDC.restype = wintypes.BOOL
+        gdi32.DeleteDC.argtypes = [wintypes.HDC]
+        gdi32.DeleteObject.restype = wintypes.BOOL
+        gdi32.DeleteObject.argtypes = [wintypes.HANDLE]
+        gdi32.GetEnhMetaFileHeader.restype = wintypes.UINT
+        gdi32.GetEnhMetaFileHeader.argtypes = [wintypes.HANDLE, wintypes.UINT, ctypes.c_void_p]
+        gdi32.PlayEnhMetaFile.restype = wintypes.BOOL
+        gdi32.PlayEnhMetaFile.argtypes = [wintypes.HDC, wintypes.HANDLE, ctypes.c_void_p]
+        gdi32.GetDIBits.restype = ctypes.c_int
+        gdi32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_void_p, wintypes.UINT]
         
         CF_ENHMETAFILE = 14
 
