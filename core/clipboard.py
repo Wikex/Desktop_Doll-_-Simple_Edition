@@ -181,6 +181,19 @@ class ClipboardManager(QObject):
         from ctypes import wintypes
         
         user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+        
+        # FIX: Ensure 64-bit handles are not truncated by ctypes default 32-bit int restype
+        user32.GetClipboardData.restype = wintypes.HANDLE
+        user32.GetClipboardData.argtypes = [wintypes.UINT]
+        gdi32.CreateCompatibleDC.restype = wintypes.HDC
+        gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+        gdi32.CreateCompatibleBitmap.restype = wintypes.HBITMAP
+        gdi32.CreateCompatibleBitmap.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+        gdi32.SelectObject.restype = wintypes.HANDLE
+        gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HANDLE]
+        user32.GetDC.restype = wintypes.HDC
+        user32.GetDC.argtypes = [wintypes.HWND]
+        
         CF_ENHMETAFILE = 14
 
         if not user32.OpenClipboard(0):
@@ -202,8 +215,15 @@ class ClipboardManager(QObject):
             # Calculate width/height from bounding box and apply a scale factor for crispness
             width = int((header.rclBounds.right - header.rclBounds.left) * scale_factor)
             height = int((header.rclBounds.bottom - header.rclBounds.top) * scale_factor)
+            
+            # Fallback if rclBounds is 0 (some EMFs only set rclFrame in 0.01mm units)
             if width <= 0 or height <= 0:
-                return None
+                # Approximate 0.01mm to pixels (assuming 96 DPI screen: 96 / 2540 pixels per 0.01mm)
+                width = int((header.rclFrame.right - header.rclFrame.left) * 96 / 2540 * scale_factor)
+                height = int((header.rclFrame.bottom - header.rclFrame.top) * 96 / 2540 * scale_factor)
+                
+            if width <= 0 or height <= 0:
+                width, height = 300, 100 # Safe fallback
 
             # 2. Setup GDI Memory Context & Bitmap
             hdc_screen = user32.GetDC(0)
@@ -241,6 +261,7 @@ class ClipboardManager(QObject):
             gdi32.GetDIBits(hdc_mem, hbitmap, 0, height, buffer, ctypes.byref(bmi), 0)
 
             # Create QImage from raw bytes
+            from PySide6.QtGui import QImage
             img = QImage(buffer, width, height, QImage.Format.Format_RGB32).copy()
 
             # Cleanup GDI handles
