@@ -139,16 +139,30 @@ class ClipboardManager(QObject):
             # include the file path as text. Ignore these payloads entirely so
             # copied files do not pollute the clipboard history.
             return
+            
+        # Standard image check
+        image = None
         if mime_data.hasImage() and self.record_image:
             image = self._clipboard.image()
-            if not image.isNull():
-                import hashlib
-                img_data = image.bits().tobytes()
-                img_hash = hashlib.md5(img_data).hexdigest()
-                if getattr(self, "last_image_hash", None) == img_hash:
-                    return
-                self.last_image_hash = img_hash
-                self.add_image_item(image)
+            
+        # If no standard image, try to extract EMF/MathType via GDI
+        if (image is None or image.isNull()) and self.record_image:
+            # Check for Windows Enhanced Metafile (CF_ENHMETAFILE = 14)
+            import ctypes
+            try:
+                if ctypes.windll.user32.IsClipboardFormatAvailable(14):
+                    image = self._get_emf_qimage()
+            except Exception:
+                pass
+
+        if image is not None and not image.isNull() and self.record_image:
+            import hashlib
+            img_data = image.bits().tobytes()
+            img_hash = hashlib.md5(img_data).hexdigest()
+            if getattr(self, "last_image_hash", None) == img_hash:
+                return
+            self.last_image_hash = img_hash
+            self.add_image_item(image)
         elif mime_data.hasText() and self.record_text:
             text = mime_data.text().strip().replace('\r\n', '\n').replace('\r', '\n')
             html = mime_data.html() if mime_data.hasHtml() else None
@@ -160,6 +174,86 @@ class ClipboardManager(QObject):
                 self.last_normalized_text = normalized_text
                 self.last_text_at = now
                 self.add_text_item(text, html)
+
+    def _get_emf_qimage(self, scale_factor=3.0):
+        """Extracts EMF/MathType from Windows clipboard and returns a rasterized QImage."""
+        import ctypes
+        from ctypes import wintypes
+        
+        user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+        CF_ENHMETAFILE = 14
+
+        if not user32.OpenClipboard(0):
+            return None
+
+        try:
+            hemf = user32.GetClipboardData(CF_ENHMETAFILE)
+            if not hemf:
+                return None
+
+            # 1. Get EMF dimensions
+            class ENHMETAHEADER(ctypes.Structure):
+                _fields_ = [("iType", wintypes.DWORD), ("nSize", wintypes.DWORD),
+                            ("rclBounds", wintypes.RECT), ("rclFrame", wintypes.RECT)]
+                
+            header = ENHMETAHEADER()
+            gdi32.GetEnhMetaFileHeader(hemf, ctypes.sizeof(header), ctypes.byref(header))
+            
+            # Calculate width/height from bounding box and apply a scale factor for crispness
+            width = int((header.rclBounds.right - header.rclBounds.left) * scale_factor)
+            height = int((header.rclBounds.bottom - header.rclBounds.top) * scale_factor)
+            if width <= 0 or height <= 0:
+                return None
+
+            # 2. Setup GDI Memory Context & Bitmap
+            hdc_screen = user32.GetDC(0)
+            hdc_mem = gdi32.CreateCompatibleDC(hdc_screen)
+            hbitmap = gdi32.CreateCompatibleBitmap(hdc_screen, width, height)
+            gdi32.SelectObject(hdc_mem, hbitmap)
+
+            # White background (MathType vectors are often transparent)
+            rect = wintypes.RECT(0, 0, width, height)
+            hbrush = gdi32.CreateSolidBrush(0x00FFFFFF) # White
+            user32.FillRect(hdc_mem, ctypes.byref(rect), hbrush)
+            gdi32.DeleteObject(hbrush)
+
+            # 3. Play (Render) the EMF onto our bitmap
+            gdi32.PlayEnhMetaFile(hdc_mem, hemf, ctypes.byref(rect))
+
+            # 4. Extract pixel data to QImage
+            class BITMAPINFOHEADER(ctypes.Structure):
+                _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+                            ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+                            ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                            ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                            ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                            ("biClrImportant", wintypes.DWORD)]
+
+            bmi = BITMAPINFOHEADER()
+            bmi.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+            bmi.biWidth = width
+            bmi.biHeight = -height  # top-down
+            bmi.biPlanes = 1
+            bmi.biBitCount = 32
+            bmi.biCompression = 0 # BI_RGB
+
+            buffer = ctypes.create_string_buffer(width * height * 4)
+            gdi32.GetDIBits(hdc_mem, hbitmap, 0, height, buffer, ctypes.byref(bmi), 0)
+
+            # Create QImage from raw bytes
+            img = QImage(buffer, width, height, QImage.Format.Format_RGB32).copy()
+
+            # Cleanup GDI handles
+            gdi32.DeleteObject(hbitmap)
+            gdi32.DeleteDC(hdc_mem)
+            user32.ReleaseDC(0, hdc_screen)
+
+            return img
+        except Exception as e:
+            print(f"EMF Extraction failed: {e}")
+            return None
+        finally:
+            user32.CloseClipboard()
 
     def _make_text_item(self, text, html=None):
         item = {"type": "text", "value": text}
