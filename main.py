@@ -85,7 +85,7 @@ class FloatingAssistant:
         self.ball = FloatingBall()
         self.tray = TrayIcon()
         self.clipboard_mgr = ClipboardManager(max_items=20)
-        self.hotkey_mgr = HotkeyManager(load_hotkeys())
+        self.hotkey_mgr = HotkeyManager(self.app, load_hotkeys())
         self.options = load_options()
 
         # Sub Balls
