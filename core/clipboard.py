@@ -126,12 +126,55 @@ class ClipboardManager(QObject):
         # only the last one will trigger the processing.
         self._debounce_timer.start()
 
+    def _is_format_painter(self, mime_data):
+        formats = mime_data.formats()
+        # MS Office Explicit Format Painter
+        if any("formatpainter" in f.lower() or "objformat" in f.lower() for f in formats):
+            return True
+            
+        # WPS Office / MS Office implicit Format Painter heuristic
+        # Normal Office copy has ~15-20 formats including RTF and HTML.
+        # Format Painter ONLY has plain text and 'Ole Private Data', lacking RTF.
+        if "text/plain" in formats and not mime_data.hasHtml() and not any("rtf" in f.lower() or "rich text" in f.lower() for f in formats):
+            try:
+                import win32clipboard
+                import win32process
+                import psutil
+                
+                win32clipboard.OpenClipboard()
+                owner_hwnd = win32clipboard.GetClipboardOwner()
+                
+                native_formats = []
+                f = win32clipboard.EnumClipboardFormats(0)
+                while f:
+                    try:
+                        native_formats.append(win32clipboard.GetClipboardFormatName(f))
+                    except Exception:
+                        pass
+                    f = win32clipboard.EnumClipboardFormats(f)
+                win32clipboard.CloseClipboard()
+                
+                if owner_hwnd:
+                    _, pid = win32process.GetWindowThreadProcessId(owner_hwnd)
+                    process_name = psutil.Process(pid).name().lower()
+                    if process_name in ["wps.exe", "et.exe", "wpp.exe", "winword.exe", "excel.exe", "powerpnt.exe"]:
+                        # Ole Private Data is present in Format Painter, but not in simple text box copies
+                        if "Ole Private Data" in native_formats and "Rich Text Format" not in native_formats:
+                            return True
+            except Exception:
+                try:
+                    import win32clipboard
+                    win32clipboard.CloseClipboard()
+                except:
+                    pass
+                    
+        return False
+
     def _process_clipboard(self):
         mime_data = self._clipboard.mimeData()
         
         # Ignore format painter from Office/WPS to prevent junk data from being recorded
-        formats = mime_data.formats()
-        if any("formatpainter" in f.lower() for f in formats):
+        if self._is_format_painter(mime_data):
             return
             
         if mime_data.hasUrls():
