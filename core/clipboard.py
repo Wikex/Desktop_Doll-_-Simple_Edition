@@ -165,7 +165,9 @@ class ClipboardManager(QObject):
                     process_name = psutil.Process(pid).name().lower()
                     if process_name in ["wps.exe", "et.exe", "wpp.exe", "winword.exe", "excel.exe", "powerpnt.exe"]:
                         # Ole Private Data is present in Format Painter, but not in simple text box copies
-                        if "Ole Private Data" in native_formats and "Rich Text Format" not in native_formats:
+                        # PPT text boxes have Ole Private Data, but they also have DOZENS of formats (PNG, EMF, etc).
+                        # Format Painter only has about 6-8 formats.
+                        if "Ole Private Data" in native_formats and len(native_formats) <= 10 and "Rich Text Format" not in native_formats:
                             return True
             except Exception:
                 try:
