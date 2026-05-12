@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QWidget, QApplication, QDialog
 from PySide6.QtCore import Qt, QRect, QPoint, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap
-from core.screenshot import get_all_visible_rects, get_uia_rect_at
+from core.screenshot import get_all_visible_rects, get_uia_rects_at, get_virtual_screen_rect, rect_area
 from PIL import ImageGrab
 import io
 import win32api
@@ -34,6 +34,7 @@ class ScreenshotMask(QDialog):
         self.all_rects_global = all_rects_global if all_rects_global is not None else get_all_visible_rects()
         self.virtual_screen_left = virtual_screen_left if virtual_screen_left is not None else win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
         self.virtual_screen_top = virtual_screen_top if virtual_screen_top is not None else win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+        self.physical_screen_rect = get_virtual_screen_rect()
         self.total_geometry = self._get_total_geometry()
         self.setGeometry(self.total_geometry)
         
@@ -110,46 +111,85 @@ class ScreenshotMask(QDialog):
             max(1, int(round(rect.height() * ratio))),
         )
 
+    def _physical_screen_area(self):
+        return max(1, rect_area(self.physical_screen_rect))
+
+    def _is_candidate_rect(self, rect, physical_pos, allow_fullscreen=False):
+        if not rect or not rect.contains(physical_pos):
+            return False
+        if rect.width() < 8 or rect.height() < 8:
+            return False
+
+        area = rect_area(rect)
+        if area <= 0:
+            return False
+        if not allow_fullscreen and area >= self._physical_screen_area() * 0.98:
+            return False
+        return True
+
+    def _add_candidate(self, candidates, seen, source, rect, physical_pos, allow_fullscreen=False):
+        if not self._is_candidate_rect(rect, physical_pos, allow_fullscreen=allow_fullscreen):
+            return
+        key = (rect.x(), rect.y(), rect.width(), rect.height())
+        if key in seen:
+            return
+        candidates.append((source, rect))
+        seen.add(key)
+
+    def _choose_best_rect(self, candidates):
+        if not candidates:
+            return None
+
+        source_rank = {
+            "uia": 0,
+            "ew": 1,
+        }
+        candidates.sort(key=lambda item: (rect_area(item[1]), source_rank.get(item[0], 9)))
+        return candidates[0][1]
+
     def find_best_rect(self, global_pos, include_uia=False):
         import win32gui
         phys_x, phys_y = win32gui.GetCursorPos()
         physical_pos = QPoint(phys_x, phys_y)
-        
-        screen_area = self.total_geometry.width() * self.total_geometry.height()
-        
-        uia_rect = getattr(self, 'last_uia_rect', None)
-        
-        # If user moved mouse outside the cached UIA rect, invalidate it
-        if uia_rect and not uia_rect.contains(physical_pos):
-            uia_rect = None
+
+        candidates = []
+        seen = set()
+
+        cached_uia = getattr(self, 'last_uia_rect', None)
+        if cached_uia and self._is_candidate_rect(cached_uia, physical_pos):
+            self._add_candidate(candidates, seen, "uia", cached_uia, physical_pos)
+        elif cached_uia:
             self.last_uia_rect = None
 
+        uia_candidates = []
         if include_uia:
             try:
-                rect = get_uia_rect_at(physical_pos.x(), physical_pos.y())
-                if rect:
-                    area = rect.width() * rect.height()
-                    if 20 < area < screen_area * 0.95:
-                        uia_rect = rect
-                        self.last_uia_rect = uia_rect
-            except Exception:
+                for rect in get_uia_rects_at(physical_pos.x(), physical_pos.y()):
+                    if self._is_candidate_rect(rect, physical_pos):
+                        uia_candidates.append(rect)
+                        self._add_candidate(candidates, seen, "uia", rect, physical_pos)
+                self.last_uia_rect = uia_candidates[0] if uia_candidates else None
+            except Exception as e:
+                log_exception(f"UIA smart screenshot lookup failed: {e}")
                 pass
 
-        ew_rect = None
+        ew_candidates = []
         for rect in self.all_rects_global:
-            if rect.contains(physical_pos):
-                if rect.width() * rect.height() > 20:
-                    ew_rect = rect
-                    break
+            if self._is_candidate_rect(rect, physical_pos):
+                ew_candidates.append(rect)
+                self._add_candidate(candidates, seen, "ew", rect, physical_pos)
 
-        if uia_rect and ew_rect:
-            self.last_ew_rect = ew_rect
-            if (ew_rect.width() * ew_rect.height()) < (uia_rect.width() * uia_rect.height()):
-                return ew_rect
-            return uia_rect
-            
-        self.last_ew_rect = ew_rect
-        return uia_rect or ew_rect
+        self.last_ew_rect = ew_candidates[0] if ew_candidates else None
+        best_rect = self._choose_best_rect(candidates)
+        if best_rect:
+            return best_rect
+
+        fallback_candidates = []
+        fallback_seen = set()
+        for rect in self.all_rects_global:
+            self._add_candidate(fallback_candidates, fallback_seen, "ew", rect, physical_pos, allow_fullscreen=True)
+        return self._choose_best_rect(fallback_candidates)
+
 
     def _do_uia_search(self):
         if self.is_dragging or not self.current_pos_global:
@@ -224,6 +264,9 @@ class ScreenshotMask(QDialog):
             self.start_pos_global = event.globalPos()
             self.current_pos_global = event.globalPos()
             self.is_dragging = False
+            self.smart_rect_physical = self.find_best_rect(self.current_pos_global, include_uia=True)
+            self.smart_rect_global = self._physical_rect_to_logical(self.smart_rect_physical) if self.smart_rect_physical else None
+            self.update()
         elif event.button() == Qt.RightButton:
             self.close_mask()
 
@@ -246,8 +289,9 @@ class ScreenshotMask(QDialog):
                 final_rect_global = QRect(self.start_pos_global, event.globalPos()).normalized()
                 self.capture_rect(self._logical_rect_to_physical(final_rect_global))
             else:
-                if self.smart_rect_physical:
-                    self.capture_rect(self.smart_rect_physical)
+                precise_rect = self.find_best_rect(event.globalPos(), include_uia=True)
+                if precise_rect:
+                    self.capture_rect(precise_rect)
                 else:
                     self.close_mask()
 
