@@ -22,7 +22,13 @@
             255,
             255,
             90
-        ]
+        ],
+        "edge_hide": {
+            "enabled": true,
+            "trigger_margin": 16,
+            "visible_width": 10,
+            "restore_margin": 8
+        }
     },
     "sub_ball": {
         "size": [

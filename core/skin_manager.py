@@ -16,7 +16,13 @@ DEFAULT_SKIN_CONFIG = {
     "main_ball": {
         "size": [56, 56],
         "color": [37, 99, 235, 230],
-        "border_color": [255, 255, 255, 90]
+        "border_color": [255, 255, 255, 90],
+        "edge_hide": {
+            "enabled": True,
+            "trigger_margin": 16,
+            "visible_width": 10,
+            "restore_margin": 8
+        }
     },
     "sub_ball": {
         "size": [34, 34],

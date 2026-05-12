@@ -8,6 +8,7 @@ class FloatingBall(QWidget):
     clicked = Signal()
     right_clicked = Signal()
     position_changed = Signal(int, int)
+    edge_hidden_changed = Signal(bool)
 
     def __init__(self, skin_config=None):
         super().__init__()
@@ -18,6 +19,8 @@ class FloatingBall(QWidget):
         self._is_dragging = False
         self._drag_start_pos = QPoint()
         self._has_moved = False
+        self._edge_hidden = False
+        self._edge_side = None
 
     def init_ui(self):
         self.setWindowTitle("\u684c\u9762\u4eba\u5076")
@@ -53,6 +56,74 @@ class FloatingBall(QWidget):
             return QColor(value[0], value[1], value[2], alpha)
         return fallback
 
+    def _edge_hide_cfg(self):
+        return self.skin_config.get("main_ball", {}).get("edge_hide", {})
+
+    def is_edge_hidden(self):
+        return self._edge_hidden
+
+    def _current_screen_geometry(self):
+        if self._edge_hidden and self._edge_side == "left":
+            probe = QPoint(self.x() + self.width() - 1, self.y() + self.height() // 2)
+        elif self._edge_hidden and self._edge_side == "right":
+            probe = QPoint(self.x(), self.y() + self.height() // 2)
+        else:
+            probe = self.frameGeometry().center()
+
+        screen = QApplication.screenAt(probe) or QApplication.primaryScreen()
+        return screen.availableGeometry()
+
+    def _should_edge_hide(self):
+        cfg = self._edge_hide_cfg()
+        if not cfg.get("enabled", True):
+            return None
+
+        screen_geo = self._current_screen_geometry()
+        trigger_margin = int(cfg.get("trigger_margin", 16))
+        if self.x() <= screen_geo.left() + trigger_margin:
+            return "left"
+        if self.x() + self.width() >= screen_geo.right() - trigger_margin:
+            return "right"
+        return None
+
+    def _dock_to_edge(self, side):
+        cfg = self._edge_hide_cfg()
+        screen_geo = self._current_screen_geometry()
+        visible_width = max(4, min(self.width(), int(cfg.get("visible_width", 10))))
+
+        y = max(screen_geo.top(), min(self.y(), screen_geo.bottom() - self.height() + 1))
+        if side == "left":
+            x = screen_geo.left() - self.width() + visible_width
+        else:
+            x = screen_geo.right() - visible_width + 1
+
+        self._edge_hidden = True
+        self._edge_side = side
+        self.move(x, y)
+        self.position_changed.emit(self.x(), self.y())
+        self.edge_hidden_changed.emit(True)
+
+    def reveal_from_edge(self):
+        if not self._edge_hidden:
+            return False
+
+        cfg = self._edge_hide_cfg()
+        screen_geo = self._current_screen_geometry()
+        restore_margin = max(0, int(cfg.get("restore_margin", 8)))
+
+        y = max(screen_geo.top(), min(self.y(), screen_geo.bottom() - self.height() + 1))
+        if self._edge_side == "left":
+            x = screen_geo.left() + restore_margin
+        else:
+            x = screen_geo.right() - self.width() - restore_margin + 1
+
+        self._edge_hidden = False
+        self._edge_side = None
+        self.move(x, y)
+        self.position_changed.emit(self.x(), self.y())
+        self.edge_hidden_changed.emit(False)
+        return True
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self._is_dragging = True
@@ -65,6 +136,9 @@ class FloatingBall(QWidget):
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if self._is_dragging and event.buttons() & Qt.LeftButton:
+            if self._edge_hidden:
+                self.reveal_from_edge()
+                self._drag_start_pos = QPoint(self.width() // 2, self.height() // 2)
             # Move the window
             self.move(event.globalPos() - self._drag_start_pos)
             self._has_moved = True
@@ -74,7 +148,13 @@ class FloatingBall(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
             self._is_dragging = False
-            if not self._has_moved:
+            if self._edge_hidden:
+                self.reveal_from_edge()
+            elif self._has_moved:
+                side = self._should_edge_hide()
+                if side:
+                    self._dock_to_edge(side)
+            else:
                 self.clicked.emit()
             event.accept()
 

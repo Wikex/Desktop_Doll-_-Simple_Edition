@@ -166,6 +166,7 @@ class FloatingAssistant:
         self.ball.clicked.connect(self.toggle_sub_balls)
         self.ball.right_clicked.connect(self.show_ball_menu)
         self.ball.position_changed.connect(self.on_ball_moved)
+        self.ball.edge_hidden_changed.connect(self.on_ball_edge_hidden_changed)
         
         # Connections - Sub Ball
         self.clipboard_ball.clicked.connect(self.on_clipboard_ball_clicked)
@@ -301,6 +302,10 @@ class FloatingAssistant:
         return bool(self.skin_config.get("performance", {}).get("screenshot_debug_overlay", False))
 
     def toggle_sub_balls(self):
+        if self.ball.is_edge_hidden():
+            self.ball.reveal_from_edge()
+            return
+
         # When main ball is clicked, show/hide the surrounding sub balls
         any_visible = any(sb.isVisible() for sb in self.sub_balls)
         if any_visible:
@@ -334,10 +339,18 @@ class FloatingAssistant:
                     sb.show()
 
     def on_ball_moved(self, x, y):
+        if self.ball.is_edge_hidden():
+            return
+
         # Update positions of all visible sub-balls to maintain their orbit/distance
         for sb in self.sub_balls:
             if sb.isVisible():
                 sb.update_position_from_main()
+
+    def on_ball_edge_hidden_changed(self, hidden):
+        if hidden:
+            for sb in self.sub_balls:
+                sb.hide()
 
     def show_ball_menu(self):
         from PySide6.QtGui import QCursor
@@ -673,6 +686,7 @@ class FloatingAssistant:
             for sb in self.sub_balls:
                 sb.hide()
         else:
+            self.ball.reveal_from_edge()
             self.ball.show()
 
     def toggle_panels(self):
