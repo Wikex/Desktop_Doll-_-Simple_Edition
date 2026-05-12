@@ -30,7 +30,6 @@ DEFAULT_SKIN_CONFIG = {
             "smart_screenshot": [239, 68, 68, 230],
             "record": [220, 38, 38, 230],
             "record_active": [34, 197, 94, 230],
-            "search": [124, 58, 237, 230],
             "recent": [20, 184, 166, 230],
             "custom": [100, 116, 139, 230]
         }

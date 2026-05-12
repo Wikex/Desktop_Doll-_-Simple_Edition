@@ -39,7 +39,6 @@ from utils.config import load_hotkeys
 from ui.notebook import NotebookPanel
 from ui.screenshot_mask import ScreenshotMask
 from ui.recording_border import RecordingBorder
-from ui.search_box import SearchBoxPanel
 from core.screen_recorder import ScreenRecorderThread
 from core.notebook import NotebookManager
 from utils.config import load_options, save_option
@@ -114,9 +113,6 @@ class FloatingAssistant:
         self.record_ball = SubBall(self.ball, text="🎥", radius=80, angle=0, tooltip="\u5f55\u5c4f", bg_color=self._sub_ball_color("record", QColor(255, 0, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.record_ball)
 
-        self.search_ball = SubBall(self.ball, text="\U0001f50d", radius=80, angle=0, tooltip="\u641c\u7d22", bg_color=self._sub_ball_color("search", QColor(156, 39, 176, 230)), skin_config=self.skin_config)
-        self.sub_balls.append(self.search_ball)
-
         self.recent_ball = SubBall(self.ball, text="🕘", radius=80, angle=0, tooltip="最近使用", bg_color=self._sub_ball_color("recent", QColor(0, 150, 136, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.recent_ball)
 
@@ -162,9 +158,6 @@ class FloatingAssistant:
         
         self.notebook_panel.set_main_ball(self.ball)
         self.recent_panel.set_main_ball(self.ball)
-        self.search_panel = SearchBoxPanel()
-        self.search_panel.set_main_ball(self.ball)
-        self.search_panel.search_requested.connect(self.perform_web_search)
         self.notebook_panel.set_content(self.notebook_mgr.content)
         
         self.settings_dialog = None
@@ -179,8 +172,6 @@ class FloatingAssistant:
         self.clipboard_ball.position_changed.connect(self.on_clipboard_ball_moved)
         self.screenshot_ball.clicked.connect(self.on_screenshot_ball_clicked)
         self.record_ball.clicked.connect(self.on_record_ball_clicked)
-        self.search_ball.clicked.connect(self.on_search_ball_clicked)
-        self.search_ball.position_changed.connect(self.on_search_ball_moved)
         self.smart_screenshot_ball.clicked.connect(self.on_smart_screenshot_clicked)
         self.notebook_ball.clicked.connect(self.on_notebook_ball_clicked)
         self.notebook_ball.position_changed.connect(self.on_notebook_ball_moved)
@@ -333,9 +324,6 @@ class FloatingAssistant:
             if self.options.get("enable_record_ball", True):
                 self.record_ball.update_position_from_main()
                 self.record_ball.show()
-            if self.options.get("enable_search_ball", True):
-                self.search_ball.update_position_from_main()
-                self.search_ball.show()
             if self.options.get("enable_recent_ball", True):
                 self.recent_ball.update_position_from_main()
                 self.recent_ball.show()
@@ -380,8 +368,6 @@ class FloatingAssistant:
             url = first_url(text)
             if url:
                 self._open_url(url)
-            else:
-                self.perform_web_search(text)
 
     def on_notebook_ball_clicked(self):
         ball_pos = self.notebook_ball.geometry()
@@ -395,13 +381,6 @@ class FloatingAssistant:
 
     
 
-    def on_search_ball_clicked(self):
-        ball_pos = self.search_ball.geometry()
-        self.search_panel.toggle_visibility(ball_pos.x(), ball_pos.y())
-
-    def on_search_ball_moved(self, x, y):
-        pass
-
     def on_recent_ball_clicked(self):
         self.recent_mgr.tick_scan()
         ball_pos = self.recent_ball.geometry()
@@ -409,16 +388,6 @@ class FloatingAssistant:
 
     def on_recent_ball_moved(self, x, y):
         pass
-
-    def perform_web_search(self, query):
-        import urllib.parse
-        
-        query = (query or "").strip()
-        if not query:
-            return
-
-        search_url = "https://www.bing.com/search?q=" + urllib.parse.quote(query)
-        self._open_url(search_url)
 
     def _open_url(self, url):
         import os
@@ -611,9 +580,6 @@ class FloatingAssistant:
             if self.options.get("enable_record_ball", True):
                 self.record_ball.reset_position()
                 self.record_ball.show()
-            if self.options.get("enable_search_ball", True):
-                self.search_ball.reset_position()
-                self.search_ball.show()
             if self.options.get("enable_recent_ball", True):
                 self.recent_ball.reset_position()
                 self.recent_ball.show()
@@ -710,7 +676,7 @@ class FloatingAssistant:
             self.ball.show()
 
     def toggle_panels(self):
-        panels = [self.panel, self.notebook_panel, self.search_panel, self.recent_panel]
+        panels = [self.panel, self.notebook_panel, self.recent_panel]
         any_visible = any(p.isVisible() for p in panels)
         if any_visible:
             self._visible_panels = [p for p in panels if p.isVisible()]
@@ -827,13 +793,6 @@ class FloatingAssistant:
                 self.record_ball.show()
             else:
                 self.record_ball.hide()
-                
-            if self.options.get("enable_search_ball", True):
-                self.search_ball.reset_position()
-                self.search_ball.show()
-            else:
-                self.search_ball.hide()
-                self.search_panel.hide()
 
             if self.options.get("enable_recent_ball", True):
                 self.recent_ball.reset_position()
@@ -866,8 +825,6 @@ class FloatingAssistant:
             self.toggle_panels()
         elif action_name == "record":
             self.on_record_ball_clicked()
-        elif action_name == "search":
-            self.on_search_ball_clicked()
         elif action_name == "recent":
             from PySide6.QtGui import QCursor
             self.recent_mgr.tick_scan()

@@ -212,7 +212,7 @@ class ClipboardItemWidget(QWidget):
                 self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 直接打开网址)"
             else:
                 self.label.setStyleSheet("color: #0f172a; font-size: 12px; background: transparent;")
-                self.full_tooltip_text = text + "\n\n(提示: 按住 Ctrl + 左键 快捷搜索此内容)"
+                self.full_tooltip_text = text
             
             
             display_text = text.strip().replace('\r\n', '\n').replace('\r', '\n')

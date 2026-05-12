@@ -14,7 +14,6 @@ HotkeyKey = Literal[
     "toggle_ball",
     "toggle_panels",
     "record",
-    "search",
     "recent",
 ]
 
@@ -32,7 +31,6 @@ OptionKey = Literal[
     "enable_notebook_ball",
     "enable_smart_screenshot_ball",
     "enable_record_ball",
-    "enable_search_ball",
     "enable_recent_ball",
     "record_text",
     "record_image",
@@ -57,7 +55,6 @@ DEFAULT_HOTKEYS = {
     "toggle_ball": "ctrl+shift+b",
     "toggle_panels": "",
     "record": "ctrl+shift+r",
-    "search": "ctrl+shift+f",
     "recent": ""
 }
 
@@ -75,7 +72,6 @@ DEFAULT_OPTIONS = {
     "enable_notebook_ball": True,
     "enable_smart_screenshot_ball": True,
     "enable_record_ball": True,
-    "enable_search_ball": True,
     "enable_recent_ball": True,
     "record_text": True,
     "record_image": True,
@@ -96,15 +92,17 @@ def load_config():
             config = json.load(f)
             
             # Merge with defaults in case new keys were added in later versions
-            hotkeys = config.get("hotkeys", {})
-            for k, v in DEFAULT_HOTKEYS.items():
-                if k not in hotkeys:
-                    hotkeys[k] = v
+            loaded_hotkeys = config.get("hotkeys", {})
+            hotkeys = {
+                k: loaded_hotkeys.get(k, v)
+                for k, v in DEFAULT_HOTKEYS.items()
+            }
 
-            options = config.get("options", {})
-            for k, v in DEFAULT_OPTIONS.items():
-                if k not in options:
-                    options[k] = v
+            loaded_options = config.get("options", {})
+            options = {
+                k: loaded_options.get(k, v)
+                for k, v in DEFAULT_OPTIONS.items()
+            }
             
             config["hotkeys"] = hotkeys
             config["options"] = options

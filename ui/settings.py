@@ -428,14 +428,13 @@ class SettingsDialog(QDialog):
         self.screenshot_row = HotkeyRow("screenshot", "系统截屏:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
         self.smart_screenshot_row = HotkeyRow("smart_screenshot", "智能截屏:", self.current_hotkeys.get("smart_screenshot", "")) # 智能截屏:
         self.record_row = HotkeyRow("record", "智能录屏:", self.current_hotkeys.get("record", "")) # 智能录屏:
-        self.search_row = HotkeyRow("search", "快捷搜索:", self.current_hotkeys.get("search", "")) # 快捷搜索:
         self.notebook_row = HotkeyRow("notebook", "显示/隐藏记事本:", self.current_hotkeys.get("notebook", "")) # 显示/隐藏记事本:
         self.clipboard_row = HotkeyRow("clipboard", "显示/隐藏剪贴板:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
         self.recent_row = HotkeyRow("recent", "显示/隐藏最近使用:", self.current_hotkeys.get("recent", ""))
         self.toggle_ball_row = HotkeyRow("toggle_ball", "显示/隐藏悬浮球:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
         self.toggle_panels_row = HotkeyRow("toggle_panels", "显示/隐藏所有面板:", self.current_hotkeys.get("toggle_panels", ""))
         
-        for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row, self.search_row, 
+        for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row,
                     self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row, self.toggle_panels_row]:
             row.text_changed.connect(self.on_hotkey_changed)
             row.focus_in.connect(lambda: setattr(self.hotkey_mgr, 'paused', True))
@@ -483,7 +482,6 @@ class SettingsDialog(QDialog):
             ("enable_notebook_ball", "记事本 (📝)"),
             ("enable_smart_screenshot_ball", "智能截屏 (🎯)"),
             ("enable_record_ball", "智能录屏 (🎥)"),
-            ("enable_search_ball", "快捷搜索 (🔍)"),
             ("enable_recent_ball", "最近使用 (🕘)")
         ]
         
@@ -869,7 +867,6 @@ class SettingsDialog(QDialog):
                     "screenshot": self.screenshot_row,
                     "smart_screenshot": self.smart_screenshot_row,
                     "record": self.record_row,
-                    "search": self.search_row,
                     "notebook": self.notebook_row,
                     "clipboard": self.clipboard_row,
                     "recent": self.recent_row,
@@ -883,7 +880,6 @@ class SettingsDialog(QDialog):
             "screenshot": self.screenshot_row,
             "smart_screenshot": self.smart_screenshot_row,
             "record": self.record_row,
-            "search": self.search_row,
             "notebook": self.notebook_row,
             "clipboard": self.clipboard_row,
             "recent": self.recent_row,
