@@ -95,11 +95,25 @@ class ClipboardManager(QObject):
             return []
 
         normalized = []
-        for item in raw_history:
+        fallback_time = time.time()
+        for index, item in enumerate(raw_history):
             if isinstance(item, dict) and item.get("type") in {"text", "image"}:
-                normalized.append(item)
+                normalized.append(self._normalize_item_metadata(item, fallback_time - index))
             elif isinstance(item, str):
-                normalized.append({"type": "text", "value": item})
+                normalized.append(self._normalize_item_metadata(
+                    {"type": "text", "value": item},
+                    fallback_time - index
+                ))
+        return normalized
+
+    def _normalize_item_metadata(self, item, fallback_created_at=None):
+        normalized = dict(item)
+        normalized["pinned"] = bool(normalized.get("pinned", False))
+        created_at = normalized.get("created_at", fallback_created_at)
+        try:
+            normalized["created_at"] = float(created_at)
+        except (TypeError, ValueError):
+            normalized["created_at"] = time.time()
         return normalized
 
     def _save_history(self):
@@ -219,7 +233,7 @@ class ClipboardManager(QObject):
                 self.add_text_item(text, html)
 
     def _make_text_item(self, text, html=None):
-        item = {"type": "text", "value": text}
+        item = {"type": "text", "value": text, "pinned": False, "created_at": time.time()}
         if html:
             item["html"] = html
         return item
@@ -241,7 +255,9 @@ class ClipboardManager(QObject):
         return {
             "type": "image",
             "value": filepath,
-            "is_path": True
+            "is_path": True,
+            "pinned": False,
+            "created_at": time.time()
         }
 
     def _manage_image_cache(self):
@@ -276,17 +292,44 @@ class ClipboardManager(QObject):
         val = item.get("value", "")
         return ("text", self._normalize_text_key(val))
 
+    def _pin_count(self):
+        return sum(1 for item in self.history if item.get("pinned", False))
+
+    def _order_pinned_then_recent(self):
+        pinned = [item for item in self.history if item.get("pinned", False)]
+        ordinary = [item for item in self.history if not item.get("pinned", False)]
+        ordinary.sort(key=lambda item: float(item.get("created_at", 0.0)), reverse=True)
+        self.history = pinned + ordinary
+
     def _trim_history(self):
-        if len(self.history) > self.max_items:
-            self.history = self.history[:self.max_items]
+        pinned = [item for item in self.history if item.get("pinned", False)]
+        ordinary = [item for item in self.history if not item.get("pinned", False)]
+        ordinary_limit = max(0, self.max_items - len(pinned))
+        self.history = pinned + ordinary[:ordinary_limit]
+
+    def trim_history(self):
+        before = list(self.history)
+        self._trim_history()
+        if self.history != before:
+            self._save_history()
+            self.history_changed.emit(self.history)
 
     def add_text_item(self, text, html=None):
-        # Remove if it already exists (deduplication)
         key = ("text", self._normalize_text_key(text))
+
+        for item in self.history:
+            if self._item_key(item) == key and item.get("pinned", False):
+                item["value"] = text
+                if html:
+                    item["html"] = html
+                elif "html" in item:
+                    item.pop("html", None)
+                self._save_history()
+                self.history_changed.emit(self.history)
+                return
+
         self.history = [item for item in self.history if self._item_key(item) != key]
-            
-        # Add to top (most recent)
-        self.history.insert(0, self._make_text_item(text, html))
+        self.history.insert(self._pin_count(), self._make_text_item(text, html))
         self._trim_history()
             
         self._save_history()
@@ -295,8 +338,14 @@ class ClipboardManager(QObject):
     def add_image_item(self, image):
         item = self._make_image_item(image)
         key = self._item_key(item)
+        for existing in self.history:
+            if self._item_key(existing) == key and existing.get("pinned", False):
+                self._save_history()
+                self.history_changed.emit(self.history)
+                return
+
         self.history = [existing for existing in self.history if self._item_key(existing) != key]
-        self.history.insert(0, item)
+        self.history.insert(self._pin_count(), item)
         self._trim_history()
         
         # Clean missing files before emitting to prevent showing blank entries
@@ -327,6 +376,27 @@ class ClipboardManager(QObject):
         self._save_history()
         self.history_changed.emit(self.history)
 
+    def toggle_pin(self, item_to_toggle):
+        if isinstance(item_to_toggle, str):
+            item_to_toggle = self._make_text_item(item_to_toggle)
+
+        key = self._item_key(item_to_toggle)
+        for index, item in enumerate(list(self.history)):
+            if self._item_key(item) != key:
+                continue
+
+            item = self.history.pop(index)
+            item["pinned"] = not item.get("pinned", False)
+            if item["pinned"]:
+                self.history.insert(self._pin_count(), item)
+            else:
+                self.history.append(item)
+                self._order_pinned_then_recent()
+            self._trim_history()
+            self._save_history()
+            self.history_changed.emit(self.history)
+            break
+
     def clear_history(self, clear_type="all"):
         if clear_type == "all":
             self.history.clear()
@@ -339,7 +409,11 @@ class ClipboardManager(QObject):
         self.history_changed.emit(self.history)
 
     def set_history(self, new_history):
-        self.history = self._dedupe_history(self._normalize_history(new_history))
+        normalized = self._dedupe_history(self._normalize_history(new_history))
+        pinned = [item for item in normalized if item.get("pinned", False)]
+        ordinary = [item for item in normalized if not item.get("pinned", False)]
+        self.history = pinned + ordinary
+        self._trim_history()
         self._save_history()
         # Emit so the UI rebuilds cleanly after a drag-drop reorder
         self.history_changed.emit(self.history)

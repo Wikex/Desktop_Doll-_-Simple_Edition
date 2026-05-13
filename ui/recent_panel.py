@@ -9,6 +9,7 @@ from ui.recent_dialogs import ExcludedExtensionsDialog, ExtensionFilterDialog
 PANEL_STYLE = "RecentPanel { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #0f172a; }"
 LIST_STYLE = "QListWidget { border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; outline: none; }"
 ITEM_STYLE = "RecentItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; } RecentItemWidget:hover { border: 1px solid #3b82f6; }"
+PINNED_ITEM_STYLE = "RecentItemWidget { background-color: #fff7ed; border: 1px solid #f59e0b; border-radius: 4px; } RecentItemWidget:hover { border: 1px solid #d97706; }"
 PRIMARY_BUTTON_STYLE = "QPushButton { background-color: #2563eb; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #1d4ed8; }"
 STATUS_ON_STYLE = "QPushButton { background-color: #16a34a; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #15803d; }"
 STATUS_OFF_STYLE = "QPushButton { background-color: #64748b; color: white; border: none; border-radius: 4px; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #475569; }"
@@ -90,17 +91,30 @@ class RecentListWidget(QListWidget):
 
 class RecentItemWidget(QWidget):
     deleted = Signal(object)
+    pin_toggled = Signal(object)
 
     def __init__(self, item_data, parent=None):
         super().__init__(parent)
         self.item_data = item_data
+        self.is_pinned = item_data.get("pinned", False)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet(ITEM_STYLE)
+        self.setStyleSheet(PINNED_ITEM_STYLE if self.is_pinned else ITEM_STYLE)
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
+
+        self.btn_pin = QPushButton("📌" if self.is_pinned else "☆")
+        self.btn_pin.setFixedSize(22, 22)
+        self.btn_pin.setToolTip("取消置顶" if self.is_pinned else "置顶")
+        self.btn_pin.setStyleSheet("""
+            QPushButton { border-radius: 4px; background-color: #f8fafc; color: #92400e; border: 1px solid #f59e0b; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #ffedd5; }
+        """)
+        self.btn_pin.setCursor(Qt.PointingHandCursor)
+        self.btn_pin.clicked.connect(self._on_pin_clicked)
+        layout.addWidget(self.btn_pin)
         
         self.btn_delete = QPushButton("✖")
         self.btn_delete.setFixedSize(22, 22)
@@ -192,6 +206,9 @@ class RecentItemWidget(QWidget):
     def _on_delete_clicked(self):
         self.deleted.emit(self.item_data)
 
+    def _on_pin_clicked(self):
+        self.pin_toggled.emit(self.item_data)
+
 class RecentPanel(QWidget):
     item_clicked = Signal(object)
     item_right_clicked = Signal(object)
@@ -201,6 +218,7 @@ class RecentPanel(QWidget):
     visibility_dict_changed = Signal(dict)
     history_cleared = Signal()
     history_reordered = Signal(list)
+    item_pin_toggled = Signal(object)
 
     def __init__(self, skin_config=None):
         super().__init__()
@@ -370,6 +388,7 @@ class RecentPanel(QWidget):
             
             widget = RecentItemWidget(item_data)
             widget.deleted.connect(self.item_deleted.emit)
+            widget.pin_toggled.connect(self.item_pin_toggled.emit)
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
             

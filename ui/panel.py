@@ -10,6 +10,7 @@ from utils.logger import log_exception
 PANEL_STYLE = "Panel { background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; } QLabel, QPushButton, QCheckBox, QListWidget { color: #0f172a; }"
 LIST_STYLE = "QListWidget { border: 1px solid #e2e8f0; background-color: #ffffff; color: #0f172a; outline: none; }"
 ITEM_STYLE = "ClipboardItemWidget { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; } ClipboardItemWidget:hover { border: 1px solid #3b82f6; }"
+PINNED_ITEM_STYLE = "ClipboardItemWidget { background-color: #fff7ed; border: 1px solid #f59e0b; border-radius: 4px; } ClipboardItemWidget:hover { border: 1px solid #d97706; }"
 SMALL_BUTTON_STYLE = "QPushButton { border: 1px solid #cbd5e1; border-radius: 4px; background-color: #f1f5f9; color: #334155; font-weight: bold; font-size: 12px; } QPushButton:hover { background-color: #e2e8f0; }"
 STATUS_ON_STYLE = "QPushButton { background-color: #16a34a; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #15803d; }"
 STATUS_OFF_STYLE = "QPushButton { background-color: #64748b; color: white; border: none; border-radius: 4px; padding: 5px 8px; font-weight: bold; } QPushButton:hover { background-color: #475569; }"
@@ -129,13 +130,15 @@ class DetailsDialog(QDialog):
 class ClipboardItemWidget(QWidget):
     deleted = Signal(object)
     viewed = Signal(object)
+    pin_toggled = Signal(object)
     
     def __init__(self, text, full_item, parent=None):
         super().__init__(parent)
         self.full_item = full_item
+        self.is_pinned = isinstance(full_item, dict) and full_item.get("pinned", False)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setAttribute(Qt.WA_Hover, True)
-        self.setStyleSheet(ITEM_STYLE)
+        self.setStyleSheet(PINNED_ITEM_STYLE if self.is_pinned else ITEM_STYLE)
         
         self.hover_timer = QTimer(self)
         self.hover_timer.setSingleShot(True)
@@ -146,6 +149,17 @@ class ClipboardItemWidget(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(5)
+
+        self.btn_pin = QPushButton("📌" if self.is_pinned else "☆")
+        self.btn_pin.setFixedSize(22, 22)
+        self.btn_pin.setToolTip("取消置顶" if self.is_pinned else "置顶")
+        self.btn_pin.setStyleSheet("""
+            QPushButton { border-radius: 4px; background-color: #f8fafc; color: #92400e; border: 1px solid #f59e0b; font-weight: bold; font-size: 11px; }
+            QPushButton:hover { background-color: #ffedd5; }
+        """)
+        self.btn_pin.setCursor(Qt.PointingHandCursor)
+        self.btn_pin.clicked.connect(self._on_pin_clicked)
+        layout.addWidget(self.btn_pin)
         
         self.btn_view = QPushButton("🔍") # View details
         self.btn_view.setFixedSize(22, 22)
@@ -255,6 +269,9 @@ class ClipboardItemWidget(QWidget):
         
     def _on_view_clicked(self):
         self.viewed.emit(self.full_item)
+
+    def _on_pin_clicked(self):
+        self.pin_toggled.emit(self.full_item)
 
     def enterEvent(self, event):
         self.hover_timer.start()
@@ -376,6 +393,7 @@ class Panel(QWidget):
     viewed = Signal(object)
     history_cleared = Signal(str)
     history_reordered = Signal(list)
+    item_pin_toggled = Signal(object)
     toggle_tracking_clicked = Signal()
     toggle_text_tracking_clicked = Signal()
     toggle_image_tracking_clicked = Signal()
@@ -615,6 +633,7 @@ class Panel(QWidget):
             widget = ClipboardItemWidget(preview, item_data)
             widget.deleted.connect(self.item_deleted.emit)
             widget.viewed.connect(self._on_item_viewed)
+            widget.pin_toggled.connect(self.item_pin_toggled.emit)
             list_item.setSizeHint(widget.sizeHint())
             self.list_widget.setItemWidget(list_item, widget)
             

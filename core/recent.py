@@ -62,7 +62,9 @@ class RecentScannerThread(QThread):
                 "name": name,
                 "ext": ext,
                 "is_app": ext == ".exe",
-                "last_seen": time.time()
+                "last_seen": time.time(),
+                "created_at": time.time(),
+                "pinned": False
             }
             new_items.append(new_item)
             changed = True
@@ -130,10 +132,72 @@ class RecentManager(QObject):
             return []
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                return self._dedupe_history(self._normalize_history(json.load(f)))
         except Exception as e:
             log_exception(f"Failed to load recent history: {e}")
             return []
+
+    def _normalize_history(self, raw_history):
+        if not isinstance(raw_history, list):
+            return []
+
+        normalized = []
+        fallback_time = time.time()
+        for index, item in enumerate(raw_history):
+            if not isinstance(item, dict) or not item.get("path"):
+                continue
+            normalized.append(self._normalize_item_metadata(item, fallback_time - index))
+        return normalized
+
+    def _normalize_item_metadata(self, item, fallback_created_at=None):
+        normalized = dict(item)
+        normalized["pinned"] = bool(normalized.get("pinned", False))
+        created_at = normalized.get("created_at", normalized.get("last_seen", fallback_created_at))
+        try:
+            normalized["created_at"] = float(created_at)
+        except (TypeError, ValueError):
+            normalized["created_at"] = time.time()
+        try:
+            normalized["last_seen"] = float(normalized.get("last_seen", normalized["created_at"]))
+        except (TypeError, ValueError):
+            normalized["last_seen"] = normalized["created_at"]
+        return normalized
+
+    def _dedupe_history(self, history):
+        deduped = []
+        seen_paths = set()
+        for item in history:
+            key = self._path_key(item.get("path", ""))
+            if not key or key in seen_paths:
+                continue
+            seen_paths.add(key)
+            deduped.append(item)
+        return deduped
+
+    def _path_key(self, path):
+        return os.path.normcase(os.path.abspath(path)) if path else ""
+
+    def _pin_count(self):
+        return sum(1 for item in self.history if item.get("pinned", False))
+
+    def _order_pinned_then_recent(self):
+        pinned = [item for item in self.history if item.get("pinned", False)]
+        ordinary = [item for item in self.history if not item.get("pinned", False)]
+        ordinary.sort(key=lambda item: float(item.get("created_at", item.get("last_seen", 0.0))), reverse=True)
+        self.history = pinned + ordinary
+
+    def _trim_history(self):
+        pinned = [item for item in self.history if item.get("pinned", False)]
+        ordinary = [item for item in self.history if not item.get("pinned", False)]
+        ordinary_limit = max(0, self.max_items - len(pinned))
+        self.history = pinned + ordinary[:ordinary_limit]
+
+    def trim_history(self):
+        before = list(self.history)
+        self._trim_history()
+        if self.history != before:
+            self._save_history()
+            self.items_changed.emit(self.history)
 
     def _save_history(self):
         self._save_timer.start()
@@ -164,22 +228,30 @@ class RecentManager(QObject):
             
         changed = False
         for new_item in new_items:
+            new_item = self._normalize_item_metadata(new_item)
             # Deduplicate
             existing_idx = -1
             for i, item in enumerate(self.history):
-                if item.get("path") == new_item.get("path"):
+                if self._path_key(item.get("path")) == self._path_key(new_item.get("path")):
                     existing_idx = i
                     break
                     
             if existing_idx >= 0:
+                existing = self.history[existing_idx]
+                if existing.get("pinned", False):
+                    created_at = existing.get("created_at", existing.get("last_seen", time.time()))
+                    existing.update(new_item)
+                    existing["created_at"] = created_at
+                    existing["pinned"] = True
+                    changed = True
+                    continue
                 self.history.pop(existing_idx)
             
-            self.history.insert(0, new_item)
+            self.history.insert(self._pin_count(), new_item)
             changed = True
             
         if changed:
-            if len(self.history) > self.max_items:
-                self.history = self.history[:self.max_items]
+            self._trim_history()
             self._save_history()
             self.items_changed.emit(self.history)
 
@@ -205,15 +277,39 @@ class RecentManager(QObject):
 
     def remove_item(self, item_to_remove):
         path = item_to_remove.get("path") if isinstance(item_to_remove, dict) else str(item_to_remove)
+        key = self._path_key(path)
         for i, item in enumerate(self.history):
-            if item.get("path") == path:
+            if self._path_key(item.get("path")) == key:
                 self.history.pop(i)
                 self._save_history()
                 self.items_changed.emit(self.history)
                 break
 
+    def toggle_pin(self, item_to_toggle):
+        path = item_to_toggle.get("path") if isinstance(item_to_toggle, dict) else str(item_to_toggle)
+        key = self._path_key(path)
+        for index, item in enumerate(list(self.history)):
+            if self._path_key(item.get("path")) != key:
+                continue
+
+            item = self.history.pop(index)
+            item["pinned"] = not item.get("pinned", False)
+            if item["pinned"]:
+                self.history.insert(self._pin_count(), item)
+            else:
+                self.history.append(item)
+                self._order_pinned_then_recent()
+            self._trim_history()
+            self._save_history()
+            self.items_changed.emit(self.history)
+            break
+
     def set_history(self, new_history):
-        self.history = new_history
+        normalized = self._dedupe_history(self._normalize_history(new_history))
+        pinned = [item for item in normalized if item.get("pinned", False)]
+        ordinary = [item for item in normalized if not item.get("pinned", False)]
+        self.history = pinned + ordinary
+        self._trim_history()
         self._save_history()
         self.items_changed.emit(self.history)
 

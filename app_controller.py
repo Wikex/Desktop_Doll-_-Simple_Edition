@@ -201,6 +201,7 @@ class FloatingAssistant:
         self.panel.item_right_clicked.connect(self._on_clipboard_item_right_clicked)
         self.panel.item_ctrl_left_clicked.connect(self._on_clipboard_item_ctrl_left_clicked)
         self.panel.item_deleted.connect(self.clipboard_mgr.remove_item)
+        self.panel.item_pin_toggled.connect(self.clipboard_mgr.toggle_pin)
         self.panel.history_cleared.connect(self.clipboard_mgr.clear_history)
         self.panel.history_reordered.connect(self.clipboard_mgr.set_history)
         self.panel.toggle_tracking_clicked.connect(self.toggle_clipboard_tracking)
@@ -210,6 +211,7 @@ class FloatingAssistant:
         self.recent_panel.item_clicked.connect(self.recent_mgr.open_item)
         self.recent_panel.item_right_clicked.connect(self.recent_mgr.open_item_location)
         self.recent_panel.item_deleted.connect(self.recent_mgr.remove_item)
+        self.recent_panel.item_pin_toggled.connect(self.recent_mgr.toggle_pin)
         self.recent_panel.toggle_tracking_clicked.connect(self.toggle_recent_tracking)
         self.recent_panel.excluded_extensions_changed.connect(self._on_recent_excluded_extensions_changed)
         self.recent_panel.visibility_dict_changed.connect(self._on_recent_visibility_dict_changed)
@@ -613,18 +615,14 @@ class FloatingAssistant:
         save_option("clipboard_max_items", self.options["clipboard_max_items"])
         self.clipboard_mgr.max_items = self.options["clipboard_max_items"]
         self.tray.set_clipboard_max_items(self.options["clipboard_max_items"])
-        self.clipboard_mgr.history = self.clipboard_mgr.get_history()[: self.clipboard_mgr.max_items]
-        self.clipboard_mgr._save_history()
-        self.clipboard_mgr.history_changed.emit(self.clipboard_mgr.history)
+        self.clipboard_mgr.trim_history()
 
     def set_recent_max_items(self, value):
         self.options["recent_max_items"] = int(value)
         save_option("recent_max_items", self.options["recent_max_items"])
         self.recent_mgr.max_items = self.options["recent_max_items"]
         self.tray.set_recent_max_items(self.options["recent_max_items"])
-        self.recent_mgr.history = self.recent_mgr.get_items()[: self.recent_mgr.max_items]
-        self.recent_mgr._save_history()
-        self.recent_mgr.items_changed.emit(self.recent_mgr.history)
+        self.recent_mgr.trim_history()
 
     def set_video_save_path(self, path):
         self.video_save_path = path
@@ -719,10 +717,18 @@ class FloatingAssistant:
         self.tray.set_hide_ball_when_screenshot(self.options.get("hide_ball_when_screenshot", True))
         self.tray.set_clipboard_tracking_enabled(self.options.get("clipboard_tracking_enabled", True))
         self.tray.set_clipboard_max_items(self.options.get("clipboard_max_items", 20))
+        self.tray.set_recent_max_items(self.options.get("recent_max_items", 30))
         # Apply clipboard
         self.clipboard_mgr.max_items = self.options.get("clipboard_max_items", 20)
         self.clipboard_mgr.tracking_enabled = self.options.get("clipboard_tracking_enabled", True)
         self.panel.set_tracking_enabled(self.clipboard_mgr.tracking_enabled)
+        # Apply recent files
+        self.recent_mgr.max_items = self.options.get("recent_max_items", 30)
+        self.recent_mgr.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
+        self.recent_panel.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
+        self.recent_mgr.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
+        self.recent_panel.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
+        self.recent_panel.set_visibility_dict(self.options.get("recent_extension_visibility", {}))
         # Apply video path
         self.video_save_path = self.options.get("video_save_path", "")
         
@@ -739,9 +745,8 @@ class FloatingAssistant:
             self.video_save_path = os.path.join(get_base_dir(), "video")
             self.options["video_save_path"] = self.video_save_path
         # Apply UI refresh if needed
-        self.clipboard_mgr.history = self.clipboard_mgr.get_history()[: self.clipboard_mgr.max_items]
-        self.clipboard_mgr._save_history()
-        self.clipboard_mgr.history_changed.emit(self.clipboard_mgr.history)
+        self.clipboard_mgr.trim_history()
+        self.recent_mgr.trim_history()
         
         # Delete old custom balls
         old_custom_balls = [sb for sb in self.sub_balls if hasattr(sb, 'custom_app_path')]
