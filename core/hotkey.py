@@ -1,6 +1,7 @@
 import ctypes
+import time
 from ctypes import wintypes
-from PySide6.QtCore import QObject, Signal, QAbstractNativeEventFilter
+from PySide6.QtCore import QObject, Signal, QAbstractNativeEventFilter, QTimer
 from PIL import ImageGrab
 from core.screenshot import get_all_visible_rects
 from utils.logger import log_message
@@ -76,46 +77,81 @@ class HotkeyManager(QObject):
         self.hotkeys = hotkeys or {}
         self.failed_hotkeys = {}
         self._registered_ids = {} # map id -> name
+        self._registered_names = {} # map name -> id
         self._next_id = 1
         self.paused = False
+        self._paused_since = None
         
         self.filter = NativeHotkeyFilter(self)
         self.app.installNativeEventFilter(self.filter)
         
         self.user32 = ctypes.windll.user32
+        self.user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+        self.user32.RegisterHotKey.restype = wintypes.BOOL
+        self.user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+        self.user32.UnregisterHotKey.restype = wintypes.BOOL
         
-        for name, key in self.hotkeys.items():
-            self.register_hotkey(name, key)
+        for name, key in list(self.hotkeys.items()):
+            self._register_native_hotkey(name, key)
+
+        self._keepalive_timer = QTimer(self)
+        self._keepalive_timer.setInterval(5 * 60 * 1000)
+        self._keepalive_timer.timeout.connect(self.refresh_hotkeys)
+        self._keepalive_timer.start()
+
+        try:
+            self.app.aboutToQuit.connect(self.cleanup)
+        except Exception:
+            pass
 
     def _trigger_action(self, name):
         if self.paused:
             return
         self.action_triggered.emit(name, None, None)
 
-    def register_hotkey(self, name, key):
+    def set_paused(self, paused):
+        self.paused = bool(paused)
+        self._paused_since = time.monotonic() if self.paused else None
+
+    def _check_stale_pause(self):
+        if not self.paused or self._paused_since is None:
+            return
+        if time.monotonic() - self._paused_since > 120:
+            self.set_paused(False)
+            log_message("Hotkey pause timed out and was automatically cleared")
+
+    def _register_native_hotkey(self, name, key):
         if not key:
+            self.failed_hotkeys.pop(name, None)
             return False
-            
+
         mods, vk = parse_hotkey(key)
         if vk == 0 and mods == 0:
+            self.failed_hotkeys[name] = key
+            log_message(f"Invalid hotkey {key} for {name}")
             return False
-            
+
+        self._unregister_native_hotkey(name)
+
         hk_id = self._next_id
         self._next_id += 1
-        
-        # Unregister if previously registered with this name
-        self.unregister_hotkey(name)
-        
+
         success = self.user32.RegisterHotKey(None, hk_id, mods, vk)
         if success:
             self._registered_ids[hk_id] = name
-            self.hotkeys[name] = key
+            self._registered_names[name] = hk_id
             self.failed_hotkeys.pop(name, None)
             return True
-        else:
-            self.failed_hotkeys[name] = key
-            log_message(f"Failed to register hotkey {key} for {name}")
-            return False
+
+        self.failed_hotkeys[name] = key
+        log_message(f"Failed to register hotkey {key} for {name}")
+        return False
+
+    def register_hotkey(self, name, key):
+        if self._register_native_hotkey(name, key):
+            self.hotkeys[name] = key
+            return True
+        return False
 
     def update_hotkey(self, name, new_key):
         old_key = self.hotkeys.get(name, "")
@@ -127,25 +163,56 @@ class HotkeyManager(QObject):
             self.hotkeys[name] = ""
             return True
 
-        if self.register_hotkey(name, new_key):
+        if self._register_native_hotkey(name, new_key):
+            self.hotkeys[name] = new_key
             return True
 
         if old_key:
-            self.register_hotkey(name, old_key)
+            self._register_native_hotkey(name, old_key)
+            self.hotkeys[name] = old_key
         else:
             self.hotkeys[name] = ""
         return False
 
-    def unregister_hotkey(self, name):
-        hk_id = None
-        for i, n in list(self._registered_ids.items()):
-            if n == name:
-                hk_id = i
-                break
-                
+    def _unregister_native_hotkey(self, name):
+        hk_id = self._registered_names.pop(name, None)
         if hk_id is not None:
-            self.user32.UnregisterHotKey(None, hk_id)
-            del self._registered_ids[hk_id]
-            
+            try:
+                self.user32.UnregisterHotKey(None, hk_id)
+            except Exception as e:
+                log_message(f"Failed to unregister hotkey id {hk_id} for {name}: {e}")
+            self._registered_ids.pop(hk_id, None)
+
+    def unregister_hotkey(self, name):
+        self._unregister_native_hotkey(name)
         self.hotkeys[name] = ""
         return True
+
+    def refresh_hotkeys(self):
+        self._check_stale_pause()
+
+        active_hotkeys = {
+            name: key
+            for name, key in self.hotkeys.items()
+            if key
+        }
+        if not active_hotkeys:
+            return
+
+        for name in list(self._registered_names.keys()):
+            self._unregister_native_hotkey(name)
+
+        for name, key in active_hotkeys.items():
+            self._register_native_hotkey(name, key)
+
+    def cleanup(self):
+        if hasattr(self, "_keepalive_timer"):
+            self._keepalive_timer.stop()
+
+        for name in list(self._registered_names.keys()):
+            self._unregister_native_hotkey(name)
+
+        try:
+            self.app.removeNativeEventFilter(self.filter)
+        except Exception:
+            pass

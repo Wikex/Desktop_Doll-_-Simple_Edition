@@ -231,6 +231,10 @@ class SettingsDialog(QDialog):
         
         self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint)
         self.init_ui()
+
+    def closeEvent(self, event: QCloseEvent):
+        self.hotkey_mgr.set_paused(False)
+        super().closeEvent(event)
         
     def init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -437,8 +441,8 @@ class SettingsDialog(QDialog):
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row,
                     self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row, self.toggle_panels_row]:
             row.text_changed.connect(self.on_hotkey_changed)
-            row.focus_in.connect(lambda: setattr(self.hotkey_mgr, 'paused', True))
-            row.focus_out.connect(lambda: setattr(self.hotkey_mgr, 'paused', False))
+            row.focus_in.connect(lambda: self.hotkey_mgr.set_paused(True))
+            row.focus_out.connect(lambda: self.hotkey_mgr.set_paused(False))
             hk_layout.addWidget(row)
             
         hk_layout.addStretch()
