@@ -140,6 +140,11 @@ class FloatingAssistant:
         self.is_recording = False
         self.recorder_thread = None
         self.recording_border = None
+        self._screenshot_hidden_state = None
+        self._system_screenshot_restore_armed = False
+        self._system_screenshot_restore_timer = QTimer()
+        self._system_screenshot_restore_timer.setSingleShot(True)
+        self._system_screenshot_restore_timer.timeout.connect(self._finish_system_screenshot_hide)
         self.video_save_path = self.options.get("video_save_path", "")
         import os
         if self.video_save_path and not os.path.exists(self.video_save_path):
@@ -525,6 +530,15 @@ class FloatingAssistant:
                 self._smart_screenshot_pending = False
                 return
 
+            self._hide_balls_for_screenshot()
+            QTimer.singleShot(80, build_mask)
+
+        def build_mask():
+            if getattr(self, 'screenshot_mask', None) is not None:
+                self._smart_screenshot_pending = False
+                self._restore_balls_after_screenshot()
+                return
+
             all_rects_global = None
             virtual_left = 0
             virtual_top = 0
@@ -545,8 +559,6 @@ class FloatingAssistant:
                 background_image = None
                 all_rects_global = None
 
-            self._hide_balls_for_screenshot()
-            
             active_win = QApplication.activeModalWidget() or QApplication.activeWindow()
             self.screenshot_mask = ScreenshotMask(
                 parent=active_win,
@@ -570,39 +582,27 @@ class FloatingAssistant:
     def _hide_balls_for_screenshot(self):
         if not self.options.get("hide_ball_when_screenshot", True):
             return
-        self._were_sub_balls_visible = any(sb.isVisible() for sb in self.sub_balls)
+        self._screenshot_hidden_state = {
+            "main_visible": self.ball.isVisible(),
+            "visible_sub_balls": [sb for sb in self.sub_balls if sb.isVisible()],
+        }
         self.ball.hide()
         for sb in self.sub_balls:
             sb.hide()
+        self.app.processEvents()
 
     def _restore_balls_after_screenshot(self):
         if not self.options.get("hide_ball_when_screenshot", True):
             return
-        self.ball.show()
-        if getattr(self, '_were_sub_balls_visible', False):
-            if self.options.get("enable_clipboard_ball", True):
-                self.clipboard_ball.reset_position()
-                self.clipboard_ball.show()
-            if self.options.get("enable_screenshot_ball", True):
-                self.screenshot_ball.reset_position()
-                self.screenshot_ball.show()
-            if self.options.get("enable_notebook_ball", True):
-                self.notebook_ball.reset_position()
-                self.notebook_ball.show()
-            if self.options.get("enable_smart_screenshot_ball", True):
-                self.smart_screenshot_ball.reset_position()
-                self.smart_screenshot_ball.show()
-            if self.options.get("enable_record_ball", True):
-                self.record_ball.reset_position()
-                self.record_ball.show()
-            if self.options.get("enable_recent_ball", True):
-                self.recent_ball.reset_position()
-                self.recent_ball.show()
+        state = self._screenshot_hidden_state or {}
+        if state.get("main_visible", True):
+            self.ball.show()
 
-            for sb in self.sub_balls:
-                if hasattr(sb, 'custom_app_path'):
-                    sb.reset_position()
-                    sb.show()
+        for sb in state.get("visible_sub_balls", []):
+            if sb in self.sub_balls:
+                sb.reset_position()
+                sb.show()
+        self._screenshot_hidden_state = None
 
     def toggle_hide_ball_when_screenshot(self):
         current = self.options.get("hide_ball_when_screenshot", True)
@@ -674,9 +674,41 @@ class FloatingAssistant:
     def _trigger_system_screenshot(self):
         # 释放所有可能的修饰键（避免组合键冲突，如 win+shift+s 触发失败）
         self._hide_balls_for_screenshot()
+        if self.options.get("hide_ball_when_screenshot", True):
+            self._arm_system_screenshot_restore()
         release_modifier_keys(keyboard)
-        keyboard.send("win+shift+s")
-        QTimer.singleShot(1200, self._restore_balls_after_screenshot)
+        QTimer.singleShot(80, self._send_system_screenshot_hotkey)
+
+    def _send_system_screenshot_hotkey(self):
+        try:
+            keyboard.send("win+shift+s")
+        except Exception as e:
+            log_exception(f"Failed to trigger system screenshot: {e}")
+            self._finish_system_screenshot_hide()
+
+    def _arm_system_screenshot_restore(self):
+        if self._system_screenshot_restore_armed:
+            return
+        self._system_screenshot_restore_armed = True
+        try:
+            QApplication.clipboard().dataChanged.connect(self._on_system_screenshot_clipboard_changed)
+        except (TypeError, RuntimeError) as e:
+            log_exception(f"Failed to watch clipboard for screenshot restore: {e}")
+        self._system_screenshot_restore_timer.start(45000)
+
+    def _on_system_screenshot_clipboard_changed(self):
+        QTimer.singleShot(250, self._finish_system_screenshot_hide)
+
+    def _finish_system_screenshot_hide(self):
+        if not self._system_screenshot_restore_armed:
+            return
+        self._system_screenshot_restore_armed = False
+        self._system_screenshot_restore_timer.stop()
+        try:
+            QApplication.clipboard().dataChanged.disconnect(self._on_system_screenshot_clipboard_changed)
+        except (TypeError, RuntimeError):
+            pass
+        self._restore_balls_after_screenshot()
 
     def toggle_main_ball(self):
         if self.ball.isVisible():
