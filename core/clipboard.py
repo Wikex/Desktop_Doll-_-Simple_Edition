@@ -210,6 +210,49 @@ class ClipboardManager(QObject):
                 return image
         return None
 
+    def _image_from_html(self, html):
+        if not html:
+            return None
+
+        import re
+        from html import unescape
+        from urllib.parse import unquote, urlparse
+
+        src_values = re.findall(r"""<img\b[^>]*\bsrc\s*=\s*["']?([^"'\s>]+)""", html, re.IGNORECASE)
+        for raw_src in src_values:
+            src = unescape(raw_src).strip()
+
+            if src.lower().startswith("data:image/"):
+                match = re.match(r"data:image/[^;]+;base64,(.+)", src, re.IGNORECASE | re.DOTALL)
+                if not match:
+                    continue
+                try:
+                    data = base64.b64decode(match.group(1), validate=False)
+                except Exception as e:
+                    log_exception(f"Failed to decode clipboard HTML image: {e}")
+                    continue
+
+                image = QImage()
+                if image.loadFromData(data) and not image.isNull():
+                    return image
+                continue
+
+            parsed = urlparse(src)
+            if parsed.scheme and parsed.scheme.lower() != "file":
+                continue
+
+            path = unquote(parsed.path if parsed.scheme else src)
+            if os.name == "nt" and path.startswith("/") and len(path) > 2 and path[2] == ":":
+                path = path[1:]
+            path = os.path.normpath(path)
+            if not os.path.exists(path):
+                continue
+
+            image = QImage(path)
+            if not image.isNull():
+                return image
+        return None
+
     def _process_clipboard(self):
         mime_data = self._clipboard.mimeData()
         
@@ -219,6 +262,7 @@ class ClipboardManager(QObject):
             
         # Standard image check
         image = None
+        checked_html_image = False
         if mime_data.hasImage() and self.record_image:
             image = self._clipboard.image()
         elif mime_data.hasUrls() and self.record_image:
@@ -226,6 +270,12 @@ class ClipboardManager(QObject):
             # URLs instead of a direct image payload. Treat local image URLs as
             # image clipboard data, but keep ignoring ordinary file-copy URLs.
             image = self._image_from_mime_urls(mime_data)
+        elif mime_data.hasHtml() and self.record_image:
+            checked_html_image = True
+            image = self._image_from_html(mime_data.html())
+
+        if image is None and not checked_html_image and mime_data.hasHtml() and self.record_image:
+            image = self._image_from_html(mime_data.html())
 
         if mime_data.hasUrls() and image is None:
             # Windows Explorer file copy often exposes file URLs and may also
