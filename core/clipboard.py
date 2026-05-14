@@ -470,11 +470,17 @@ class ClipboardManager(QObject):
 
     def clear_history(self, clear_type="all"):
         if clear_type == "all":
-            self.history.clear()
+            self.history = [item for item in self.history if item.get("pinned", False)]
         elif clear_type == "text":
-            self.history = [item for item in self.history if item.get("type") != "text"]
+            self.history = [
+                item for item in self.history
+                if item.get("pinned", False) or item.get("type") != "text"
+            ]
         elif clear_type == "image":
-            self.history = [item for item in self.history if item.get("type") != "image"]
+            self.history = [
+                item for item in self.history
+                if item.get("pinned", False) or item.get("type") != "image"
+            ]
             
         self._save_history()
         self.history_changed.emit(self.history)

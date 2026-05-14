@@ -271,7 +271,7 @@ class RecentManager(QObject):
 
     def clear_history(self):
         if self.history:
-            self.history.clear()
+            self.history = [item for item in self.history if item.get("pinned", False)]
             self._save_history()
             self.items_changed.emit(self.history)
 

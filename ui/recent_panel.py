@@ -359,7 +359,7 @@ class RecentPanel(QWidget):
         from PySide6.QtWidgets import QMessageBox
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("确认清空")
-        msg_box.setText("确定要清空所有的最近使用记录吗？")
+        msg_box.setText("确定要清空所有未置顶的最近使用记录吗？\n\n已置顶的记录会保留。")
         btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
         btn_no = msg_box.addButton("否", QMessageBox.NoRole)
         msg_box.exec()

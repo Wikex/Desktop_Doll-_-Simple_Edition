@@ -549,7 +549,7 @@ class Panel(QWidget):
         
         if has_text and has_image:
             msg_box.setWindowTitle("清空选项")
-            msg_box.setText("请选择要清空的剪贴板内容：")
+            msg_box.setText("请选择要清空的剪贴板内容：\n\n已置顶的记录会保留。")
             
             btn_text = msg_box.addButton("仅清空文字", QMessageBox.ActionRole)
             btn_image = msg_box.addButton("仅清空图片", QMessageBox.ActionRole)
@@ -568,7 +568,7 @@ class Panel(QWidget):
         else:
             msg_box.setWindowTitle("确认清空")
             content_type = "图片" if has_image else "文字"
-            msg_box.setText(f"确定要清空所有的{content_type}记录吗？")
+            msg_box.setText(f"确定要清空所有未置顶的{content_type}记录吗？\n\n已置顶的记录会保留。")
             btn_yes = msg_box.addButton("是", QMessageBox.YesRole)
             btn_no = msg_box.addButton("否", QMessageBox.NoRole)
             msg_box.exec()
