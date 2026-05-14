@@ -439,6 +439,36 @@ class ClipboardManager(QObject):
             self._save_history()
             self.history_changed.emit(self.history)
 
+    def _foreground_process_name(self):
+        try:
+            import win32gui
+            import win32process
+            import psutil
+
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd:
+                return ""
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            return psutil.Process(pid).name().lower()
+        except Exception as e:
+            log_exception(f"Failed to inspect foreground process for paste delay: {e}")
+            return ""
+
+    def _auto_paste_delay_ms(self):
+        process_name = self._foreground_process_name()
+        if process_name in {"vmware.exe", "vmplayer.exe", "vmware-vmx.exe"}:
+            return 700
+        return 50
+
+    def _send_paste_hotkey(self):
+        try:
+            keyboard.send("ctrl+v")
+        except Exception as e:
+            log_exception(f"Failed to send paste hotkey: {e}")
+
+    def _schedule_auto_paste(self):
+        QTimer.singleShot(self._auto_paste_delay_ms(), self._send_paste_hotkey)
+
     def copy_to_clipboard(self, item, as_plain_text=False):
         """Called when user clicks an item to copy it back"""
         self.ignore_next = True
@@ -459,7 +489,7 @@ class ClipboardManager(QObject):
                 self.last_image_hash = hashlib.md5(img_data).hexdigest()
                 
                 self._clipboard.setImage(image)
-                QTimer.singleShot(50, lambda: keyboard.send("ctrl+v"))
+                self._schedule_auto_paste()
             else:
                 self.remove_item(item)
         else:
@@ -475,7 +505,7 @@ class ClipboardManager(QObject):
             if html and not as_plain_text:
                 mime.setHtml(html)
             self._clipboard.setMimeData(mime)
-            QTimer.singleShot(50, lambda: keyboard.send("ctrl+v"))
+            self._schedule_auto_paste()
 
 
 
