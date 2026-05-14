@@ -142,10 +142,99 @@ class ScreenshotMask(QDialog):
 
         source_rank = {
             "uia": 0,
-            "ew": 1,
+            "visual": 1,
+            "ew": 2,
         }
         candidates.sort(key=lambda item: (rect_area(item[1]), source_rank.get(item[0], 9)))
         return candidates[0][1]
+
+    def _visual_rect_at(self, physical_pos):
+        if self.background_image is None:
+            return None
+
+        try:
+            import numpy as np
+            import cv2
+
+            img_w, img_h = self.background_image.size
+            img_x = physical_pos.x() - self.virtual_screen_left
+            img_y = physical_pos.y() - self.virtual_screen_top
+            if img_x < 0 or img_y < 0 or img_x >= img_w or img_y >= img_h:
+                return None
+
+            crop_half_w = 360
+            crop_half_h = 260
+            left = max(0, img_x - crop_half_w)
+            top = max(0, img_y - crop_half_h)
+            right = min(img_w, img_x + crop_half_w)
+            bottom = min(img_h, img_y + crop_half_h)
+            if right - left < 20 or bottom - top < 20:
+                return None
+
+            crop = self.background_image.crop((left, top, right, bottom)).convert("RGB")
+            scale = 2
+            small_w = max(1, crop.width // scale)
+            small_h = max(1, crop.height // scale)
+            small = crop.resize((small_w, small_h))
+            arr = np.asarray(small).astype(np.int16)
+
+            seed_x = max(0, min(small_w - 1, int((img_x - left) / scale)))
+            seed_y = max(0, min(small_h - 1, int((img_y - top) / scale)))
+            patch = arr[
+                max(0, seed_y - 2):min(small_h, seed_y + 3),
+                max(0, seed_x - 2):min(small_w, seed_x + 3),
+            ]
+            seed_color = np.median(patch.reshape(-1, 3), axis=0)
+            local_std = float(np.std(patch.reshape(-1, 3)))
+            threshold = max(28.0, min(70.0, 24.0 + local_std * 2.0))
+
+            diff = arr - seed_color
+            color_distance = np.sqrt(np.sum(diff * diff, axis=2))
+            mask = (color_distance <= threshold).astype("uint8")
+
+            gray = cv2.cvtColor(arr.astype("uint8"), cv2.COLOR_RGB2GRAY)
+            grad_x = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
+            grad_y = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
+            gradient = cv2.convertScaleAbs(np.abs(grad_x) + np.abs(grad_y))
+            mask[gradient > 85] = 0
+            mask[seed_y, seed_x] = 1
+
+            kernel = np.ones((3, 3), dtype="uint8")
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+            labels_count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+            if labels_count <= 1:
+                return None
+
+            label = labels[seed_y, seed_x]
+            if label == 0:
+                return None
+
+            x, y, w, h, area = stats[label]
+            if area < 80 or w < 8 or h < 8:
+                return None
+            if x <= 1 and y <= 1 and x + w >= small_w - 1 and y + h >= small_h - 1:
+                return None
+
+            pad = 2
+            phys_left = self.virtual_screen_left + left + max(0, (x - pad) * scale)
+            phys_top = self.virtual_screen_top + top + max(0, (y - pad) * scale)
+            phys_right = self.virtual_screen_left + left + min(crop.width, (x + w + pad) * scale)
+            phys_bottom = self.virtual_screen_top + top + min(crop.height, (y + h + pad) * scale)
+            rect = QRect(
+                int(phys_left),
+                int(phys_top),
+                max(1, int(phys_right - phys_left)),
+                max(1, int(phys_bottom - phys_top)),
+            )
+            if rect.width() < 24 or rect.height() < 24:
+                return None
+            if rect_area(rect) >= self._physical_screen_area() * 0.80:
+                return None
+            return rect
+        except Exception as e:
+            log_exception(f"Visual smart screenshot lookup failed: {e}")
+            return None
 
     def find_best_rect(self, global_pos, include_uia=False):
         import win32gui
@@ -178,6 +267,11 @@ class ScreenshotMask(QDialog):
             if self._is_candidate_rect(rect, physical_pos):
                 ew_candidates.append(rect)
                 self._add_candidate(candidates, seen, "ew", rect, physical_pos)
+
+        visual_rect = self._visual_rect_at(physical_pos)
+        self.last_visual_rect = visual_rect
+        if visual_rect:
+            self._add_candidate(candidates, seen, "visual", visual_rect, physical_pos)
 
         self.last_ew_rect = ew_candidates[0] if ew_candidates else None
         best_rect = self._choose_best_rect(candidates)
@@ -255,6 +349,8 @@ class ScreenshotMask(QDialog):
                 debug_text += f" | UIA: {self.last_uia_rect.width()}x{self.last_uia_rect.height()}"
             if getattr(self, 'last_ew_rect', None):
                 debug_text += f" | EW: {self.last_ew_rect.width()}x{self.last_ew_rect.height()}"
+            if getattr(self, 'last_visual_rect', None):
+                debug_text += f" | VIS: {self.last_visual_rect.width()}x{self.last_visual_rect.height()}"
 
             if self.current_pos_global:
                 painter.drawText(self.current_pos_global.x() - offset.x() + 15, self.current_pos_global.y() - offset.y() + 15, debug_text)
