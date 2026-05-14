@@ -876,6 +876,8 @@ class FloatingAssistant:
             self.on_notebook_ball_clicked()
         elif action_name == "toggle_ball":
             self.toggle_main_ball()
+        elif action_name == "locate_ball":
+            self.show_ball_locator()
         elif action_name == "toggle_panels":
             self.toggle_panels()
         elif action_name == "record":

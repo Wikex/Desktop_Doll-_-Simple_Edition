@@ -12,6 +12,7 @@ HotkeyKey = Literal[
     "smart_screenshot",
     "notebook",
     "toggle_ball",
+    "locate_ball",
     "toggle_panels",
     "record",
     "recent",
@@ -53,6 +54,7 @@ DEFAULT_HOTKEYS = {
     "smart_screenshot": "ctrl+shift+s",
     "notebook": "ctrl+shift+n",
     "toggle_ball": "ctrl+shift+b",
+    "locate_ball": "ctrl+shift+l",
     "toggle_panels": "",
     "record": "ctrl+shift+r",
     "recent": ""

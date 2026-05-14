@@ -436,10 +436,12 @@ class SettingsDialog(QDialog):
         self.clipboard_row = HotkeyRow("clipboard", "显示/隐藏剪贴板:", self.current_hotkeys.get("clipboard", "")) # 显示/隐藏剪贴板:
         self.recent_row = HotkeyRow("recent", "显示/隐藏最近使用:", self.current_hotkeys.get("recent", ""))
         self.toggle_ball_row = HotkeyRow("toggle_ball", "显示/隐藏悬浮球:", self.current_hotkeys.get("toggle_ball", "")) # 显示/隐藏悬浮球:
+        self.locate_ball_row = HotkeyRow("locate_ball", "显示它在哪:", self.current_hotkeys.get("locate_ball", ""))
         self.toggle_panels_row = HotkeyRow("toggle_panels", "显示/隐藏所有面板:", self.current_hotkeys.get("toggle_panels", ""))
         
         for row in [self.screenshot_row, self.smart_screenshot_row, self.record_row,
-                    self.notebook_row, self.clipboard_row, self.recent_row, self.toggle_ball_row, self.toggle_panels_row]:
+                    self.notebook_row, self.clipboard_row, self.recent_row,
+                    self.toggle_ball_row, self.locate_ball_row, self.toggle_panels_row]:
             row.text_changed.connect(self.on_hotkey_changed)
             row.focus_in.connect(lambda: self.hotkey_mgr.set_paused(True))
             row.focus_out.connect(lambda: self.hotkey_mgr.set_paused(False))
@@ -875,6 +877,7 @@ class SettingsDialog(QDialog):
                     "clipboard": self.clipboard_row,
                     "recent": self.recent_row,
                     "toggle_ball": self.toggle_ball_row,
+                    "locate_ball": self.locate_ball_row,
                     "toggle_panels": self.toggle_panels_row
                 }
                 row_map[name].set_hotkey(self.current_hotkeys.get(name, ""))
@@ -888,6 +891,7 @@ class SettingsDialog(QDialog):
             "clipboard": self.clipboard_row,
             "recent": self.recent_row,
             "toggle_ball": self.toggle_ball_row,
+            "locate_ball": self.locate_ball_row,
             "toggle_panels": self.toggle_panels_row
         }
         
