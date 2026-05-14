@@ -190,6 +190,7 @@ class FloatingAssistant:
         self.tray.quit_requested.connect(self.quit_app)
         self.tray.about_requested.connect(self.show_about)
         self.tray.toggle_requested.connect(self.toggle_main_ball)
+        self.tray.locate_requested.connect(self.show_ball_locator)
         self.tray.toggle_panels_requested.connect(self.toggle_panels)
         self.tray.settings_requested.connect(self.prompt_settings)
         self.tray.toggle_hide_ball_when_screenshot_requested.connect(self.toggle_hide_ball_when_screenshot)
@@ -718,6 +719,9 @@ class FloatingAssistant:
         else:
             self.ball.reveal_from_edge()
             self.ball.show()
+
+    def show_ball_locator(self):
+        self.ball.show_locator_hint()
 
     def toggle_panels(self):
         panels = [self.panel, self.notebook_panel, self.recent_panel]

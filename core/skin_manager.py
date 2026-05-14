@@ -22,6 +22,13 @@ DEFAULT_SKIN_CONFIG = {
             "trigger_margin": 16,
             "visible_width": 10,
             "restore_margin": 8
+        },
+        "locator": {
+            "renderer": "qt_ripple",
+            "size": 180,
+            "duration_ms": 1600,
+            "interval_ms": 33,
+            "live2d_asset": ""
         }
     },
     "sub_ball": {

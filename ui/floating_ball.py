@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import QWidget, QApplication
-from PySide6.QtCore import Qt, QPoint, Signal
-from PySide6.QtGui import QMouseEvent, QPainter, QColor
+from PySide6.QtCore import Qt, QPoint, Signal, QTimer
+from PySide6.QtGui import QMouseEvent, QPainter, QColor, QPen
 
 class FloatingBall(QWidget):
     # Signal emitted when the ball is clicked
@@ -14,6 +14,7 @@ class FloatingBall(QWidget):
         super().__init__()
         self.skin_config = skin_config or {}
         self.init_ui()
+        self._locator_overlay = None
         
         # Variables for dragging
         self._is_dragging = False
@@ -163,6 +164,96 @@ class FloatingBall(QWidget):
         x = screen_geo.width() - self.width() - 50
         y = screen_geo.height() - self.height() - 50
         self.move(x, y)
+
+    def show_locator_hint(self):
+        if self._edge_hidden:
+            self.reveal_from_edge()
+
+        self.show()
+        self.raise_()
+        if self._locator_overlay is not None:
+            self._locator_overlay.close()
+
+        overlay = BallLocatorOverlay(self, self.skin_config)
+        self._locator_overlay = overlay
+        overlay.destroyed.connect(lambda: self._clear_locator_overlay(overlay))
+        overlay.start()
+
+    def _clear_locator_overlay(self, overlay):
+        if self._locator_overlay is overlay:
+            self._locator_overlay = None
+
+
+class BallLocatorOverlay(QWidget):
+    """Lightweight position hint. Can be replaced by a Live2D locator later."""
+
+    def __init__(self, target, skin_config=None):
+        super().__init__(None)
+        self.target = target
+        self.skin_config = skin_config or {}
+        cfg = self.skin_config.get("main_ball", {}).get("locator", {})
+        self.renderer = cfg.get("renderer", "qt_ripple")
+        self.live2d_asset = cfg.get("live2d_asset", "")
+        self.overlay_size = int(cfg.get("size", 180))
+        self.duration_ms = int(cfg.get("duration_ms", 1600))
+        self.interval_ms = int(cfg.get("interval_ms", 33))
+        self.frame = 0
+        self.max_frames = max(1, self.duration_ms // self.interval_ms)
+
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setFixedSize(self.overlay_size, self.overlay_size)
+
+        self.timer = QTimer(self)
+        self.timer.setInterval(self.interval_ms)
+        self.timer.timeout.connect(self._tick)
+
+    def start(self):
+        self._sync_position()
+        self.show()
+        self.raise_()
+        self.timer.start()
+
+    def _sync_position(self):
+        center = self.target.frameGeometry().center()
+        self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)
+
+    def _tick(self):
+        self.frame += 1
+        if not self.target.isVisible() or self.frame >= self.max_frames:
+            self.close()
+            return
+        self._sync_position()
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        center = self.rect().center()
+        progress = self.frame / self.max_frames
+        base_color = QColor(37, 99, 235)
+        max_radius = self.width() // 2 - 8
+
+        for i in range(3):
+            phase = (progress + i / 3.0) % 1.0
+            radius = 24 + int((max_radius - 24) * phase)
+            alpha = max(0, int(220 * (1.0 - phase)))
+            pen = QPen(QColor(base_color.red(), base_color.green(), base_color.blue(), alpha), 3)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, radius, radius)
+
+        badge_w = 64
+        badge_h = 24
+        badge_x = (self.width() - badge_w) // 2
+        badge_y = self.height() - badge_h - 12
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(15, 23, 42, 220))
+        painter.drawRoundedRect(badge_x, badge_y, badge_w, badge_h, 5, 5)
+        painter.setPen(QPen(QColor(255, 255, 255), 1))
+        painter.drawText(badge_x, badge_y, badge_w, badge_h, Qt.AlignCenter, "在这里")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
