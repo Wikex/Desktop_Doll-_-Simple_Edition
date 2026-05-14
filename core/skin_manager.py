@@ -41,6 +41,7 @@ DEFAULT_SKIN_CONFIG = {
             "screenshot": [34, 197, 94, 230],
             "notebook": [59, 130, 246, 230],
             "smart_screenshot": [239, 68, 68, 230],
+            "advanced_screenshot": [124, 58, 237, 230],
             "record": [220, 38, 38, 230],
             "record_active": [34, 197, 94, 230],
             "recent": [20, 184, 166, 230],

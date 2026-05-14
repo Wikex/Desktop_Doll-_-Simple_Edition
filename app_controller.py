@@ -38,6 +38,7 @@ from core.screenshot import get_all_visible_rects
 from utils.config import load_hotkeys
 from ui.notebook import NotebookPanel
 from ui.screenshot_mask import ScreenshotMask
+from ui.screenshot_editor import ScreenshotEditor
 from ui.recording_border import RecordingBorder
 from core.screen_recorder import ScreenRecorderThread
 from core.notebook import NotebookManager
@@ -110,6 +111,9 @@ class FloatingAssistant:
         self.smart_screenshot_ball = SubBall(self.ball, text="🎯", radius=80, angle=0, tooltip="\u667a\u80fd\u622a\u56fe", bg_color=self._sub_ball_color("smart_screenshot", QColor(255, 69, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.smart_screenshot_ball)
 
+        self.advanced_screenshot_ball = SubBall(self.ball, text="✏️", radius=80, angle=0, tooltip="进阶截图", bg_color=self._sub_ball_color("advanced_screenshot", QColor(124, 58, 237, 230)), skin_config=self.skin_config)
+        self.sub_balls.append(self.advanced_screenshot_ball)
+
         self.record_ball = SubBall(self.ball, text="🎥", radius=80, angle=0, tooltip="\u5f55\u5c4f", bg_color=self._sub_ball_color("record", QColor(255, 0, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.record_ball)
 
@@ -140,6 +144,7 @@ class FloatingAssistant:
         self.is_recording = False
         self.recorder_thread = None
         self.recording_border = None
+        self.screenshot_editors = []
         self._screenshot_hidden_state = None
         self._system_screenshot_restore_armed = False
         self._system_screenshot_restore_timer = QTimer()
@@ -179,6 +184,7 @@ class FloatingAssistant:
         self.screenshot_ball.clicked.connect(self.on_screenshot_ball_clicked)
         self.record_ball.clicked.connect(self.on_record_ball_clicked)
         self.smart_screenshot_ball.clicked.connect(self.on_smart_screenshot_clicked)
+        self.advanced_screenshot_ball.clicked.connect(self.on_advanced_screenshot_clicked)
         self.notebook_ball.clicked.connect(self.on_notebook_ball_clicked)
         self.notebook_ball.position_changed.connect(self.on_notebook_ball_moved)
         self.recent_ball.clicked.connect(self.on_recent_ball_clicked)
@@ -334,6 +340,9 @@ class FloatingAssistant:
             if self.options.get("enable_smart_screenshot_ball", True):
                 self.smart_screenshot_ball.update_position_from_main()
                 self.smart_screenshot_ball.show()
+            if self.options.get("enable_advanced_screenshot_ball", True):
+                self.advanced_screenshot_ball.update_position_from_main()
+                self.advanced_screenshot_ball.show()
             if self.options.get("enable_record_ball", True):
                 self.record_ball.update_position_from_main()
                 self.record_ball.show()
@@ -515,6 +524,12 @@ class FloatingAssistant:
         QMessageBox.warning(None, "\u5f55\u5c4f\u9519\u8bef", err) # 录屏错误
 
     def on_smart_screenshot_clicked(self, background_image=None, pre_captured_rects=None):
+        self._start_screenshot_mask("screenshot", background_image=background_image, pre_captured_rects=pre_captured_rects)
+
+    def on_advanced_screenshot_clicked(self):
+        self._start_screenshot_mask("edit")
+
+    def _start_screenshot_mask(self, mode="screenshot", background_image=None, pre_captured_rects=None):
         if getattr(self, 'screenshot_mask', None) is not None:
             return 
         if getattr(self, '_smart_screenshot_pending', False):
@@ -563,16 +578,39 @@ class FloatingAssistant:
             active_win = QApplication.activeModalWidget() or QApplication.activeWindow()
             self.screenshot_mask = ScreenshotMask(
                 parent=active_win,
+                mode=mode,
                 background_image=background_image,
                 all_rects_global=all_rects_global,
                 virtual_screen_left=virtual_left,
                 virtual_screen_top=virtual_top,
                 show_debug_overlay=self._screenshot_debug_overlay(),
             )
+            if mode == "edit":
+                self.screenshot_mask.image_selected.connect(self._open_screenshot_editor)
             self.screenshot_mask.finished.connect(self._on_screenshot_finished)
             self.screenshot_mask.exec()
 
         QTimer.singleShot(0, start_mask)
+
+    def _open_screenshot_editor(self, pixmap):
+        if pixmap is None or pixmap.isNull():
+            return
+        save_dir = self.options.get("picture_save_path", "") or os.path.join(get_base_dir(), "picture")
+        editor = ScreenshotEditor(pixmap, save_dir=save_dir)
+        editor.destroyed.connect(self._cleanup_screenshot_editors)
+        self.screenshot_editors.append(editor)
+        editor.show()
+        editor.raise_()
+
+    def _cleanup_screenshot_editors(self):
+        alive = []
+        for editor in self.screenshot_editors:
+            try:
+                if editor.isVisible():
+                    alive.append(editor)
+            except RuntimeError:
+                pass
+        self.screenshot_editors = alive
         
     def _on_screenshot_finished(self):
         self._smart_screenshot_pending = False
@@ -842,6 +880,12 @@ class FloatingAssistant:
                 self.smart_screenshot_ball.show()
             else:
                 self.smart_screenshot_ball.hide()
+
+            if self.options.get("enable_advanced_screenshot_ball", True):
+                self.advanced_screenshot_ball.reset_position()
+                self.advanced_screenshot_ball.show()
+            else:
+                self.advanced_screenshot_ball.hide()
                 
             if self.options.get("enable_record_ball", True):
                 self.record_ball.reset_position()
@@ -872,6 +916,8 @@ class FloatingAssistant:
             self.on_screenshot_ball_clicked()
         elif action_name == "smart_screenshot":
             self.on_smart_screenshot_clicked(background_image=payload_img, pre_captured_rects=payload_rects)
+        elif action_name == "advanced_screenshot":
+            self.on_advanced_screenshot_clicked()
         elif action_name == "notebook":
             self.on_notebook_ball_clicked()
         elif action_name == "toggle_ball":

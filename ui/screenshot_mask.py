@@ -12,6 +12,7 @@ from utils.logger import log_exception
 class ScreenshotMask(QDialog):
     finished = Signal()
     rect_selected = Signal(object)
+    image_selected = Signal(object)
 
     def __init__(self, parent=None, mode="screenshot", background_image=None, all_rects_global=None, virtual_screen_left=None, virtual_screen_top=None, show_debug_overlay=False):
         self.mode = mode
@@ -482,30 +483,43 @@ class ScreenshotMask(QDialog):
                 self.close_mask()
             else:
                 self.finished.emit()
+        elif self.mode == "edit":
+            QTimer.singleShot(80, lambda: self._emit_capture(qrect_global))
         else:
             QTimer.singleShot(150, lambda: self._do_capture(qrect_global))
 
+    def _capture_pixmap(self, qrect_global):
+        v_left = self.virtual_screen_left
+        v_top = self.virtual_screen_top
+
+        left = qrect_global.x() - v_left
+        top = qrect_global.y() - v_top
+        right = left + qrect_global.width()
+        bottom = top + qrect_global.height()
+
+        if self.background_image is not None:
+            img = self.background_image.crop((left, top, right, bottom))
+        else:
+            img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+
+        byte_io = io.BytesIO()
+        img.save(byte_io, format='PNG')
+        pixmap = QPixmap()
+        pixmap.loadFromData(byte_io.getvalue())
+        return pixmap
+
+    def _emit_capture(self, qrect_global):
+        try:
+            self.image_selected.emit(self._capture_pixmap(qrect_global))
+        except Exception as e:
+            log_exception(f"Capture for editor failed: {e}")
+        finally:
+            self.finished.emit()
+            self.accept()
+
     def _do_capture(self, qrect_global):
         try:
-            v_left = self.virtual_screen_left
-            v_top = self.virtual_screen_top
-
-            left = qrect_global.x() - v_left
-            top = qrect_global.y() - v_top
-            right = left + qrect_global.width()
-            bottom = top + qrect_global.height()
-
-            if self.background_image is not None:
-                img = self.background_image.crop((left, top, right, bottom))
-            else:
-                img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
-
-            byte_io = io.BytesIO()
-            img.save(byte_io, format='PNG')
-            pixmap = QPixmap()
-            pixmap.loadFromData(byte_io.getvalue())
-
-            QApplication.clipboard().setPixmap(pixmap)
+            QApplication.clipboard().setPixmap(self._capture_pixmap(qrect_global))
         except Exception as e:
             log_exception(f"Capture failed: {e}")
         finally:
