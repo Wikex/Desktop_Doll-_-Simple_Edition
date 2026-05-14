@@ -194,6 +194,22 @@ class ClipboardManager(QObject):
                     
         return False
 
+    def _image_from_mime_urls(self, mime_data):
+        image_exts = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".ico", ".tif", ".tiff"}
+        for url in mime_data.urls():
+            if not url.isLocalFile():
+                continue
+
+            path = url.toLocalFile()
+            _, ext = os.path.splitext(path)
+            if ext.lower() not in image_exts or not os.path.exists(path):
+                continue
+
+            image = QImage(path)
+            if not image.isNull():
+                return image
+        return None
+
     def _process_clipboard(self):
         mime_data = self._clipboard.mimeData()
         
@@ -201,16 +217,21 @@ class ClipboardManager(QObject):
         if self._is_format_painter(mime_data):
             return
             
-        if mime_data.hasUrls():
-            # Windows Explorer file copy often exposes file URLs and may also
-            # include the file path as text. Ignore these payloads entirely so
-            # copied files do not pollute the clipboard history.
-            return
-            
         # Standard image check
         image = None
         if mime_data.hasImage() and self.record_image:
             image = self._clipboard.image()
+        elif mime_data.hasUrls() and self.record_image:
+            # WeChat and some Chromium/Electron apps copy images as local temp-file
+            # URLs instead of a direct image payload. Treat local image URLs as
+            # image clipboard data, but keep ignoring ordinary file-copy URLs.
+            image = self._image_from_mime_urls(mime_data)
+
+        if mime_data.hasUrls() and image is None:
+            # Windows Explorer file copy often exposes file URLs and may also
+            # include the file path as text. Ignore these payloads entirely so
+            # copied files do not pollute the clipboard history.
+            return
 
         if image is not None and not image.isNull() and self.record_image:
             import hashlib
