@@ -592,11 +592,17 @@ class FloatingAssistant:
 
         QTimer.singleShot(0, start_mask)
 
-    def _open_screenshot_editor(self, pixmap):
+    def _open_screenshot_editor(self, payload):
+        if isinstance(payload, dict):
+            pixmap = payload.get("pixmap")
+            target_rect = payload.get("rect")
+        else:
+            pixmap = payload
+            target_rect = None
         if pixmap is None or pixmap.isNull():
             return
         save_dir = self.options.get("picture_save_path", "") or os.path.join(get_base_dir(), "picture")
-        editor = ScreenshotEditor(pixmap, save_dir=save_dir)
+        editor = ScreenshotEditor(pixmap, save_dir=save_dir, target_rect=target_rect)
         editor.destroyed.connect(self._cleanup_screenshot_editors)
         self.screenshot_editors.append(editor)
         editor.show()

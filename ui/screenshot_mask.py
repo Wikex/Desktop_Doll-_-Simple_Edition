@@ -510,7 +510,10 @@ class ScreenshotMask(QDialog):
 
     def _emit_capture(self, qrect_global):
         try:
-            self.image_selected.emit(self._capture_pixmap(qrect_global))
+            self.image_selected.emit({
+                "pixmap": self._capture_pixmap(qrect_global),
+                "rect": self._physical_rect_to_logical(qrect_global),
+            })
         except Exception as e:
             log_exception(f"Capture for editor failed: {e}")
         finally:

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -225,19 +224,28 @@ class ScreenshotCanvas(QWidget):
 
 
 class ScreenshotEditor(QWidget):
-    def __init__(self, pixmap, save_dir="", parent=None):
+    def __init__(self, pixmap, save_dir="", target_rect=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("进阶截图")
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        self.resize(min(1100, pixmap.width() + 40), min(760, pixmap.height() + 96))
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
         self.save_dir = save_dir or os.path.join(get_base_dir(), "screenshots")
         self.pinned_windows = []
+        self._is_dragging = False
+        self._drag_start_pos = QPoint()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        toolbar = QHBoxLayout()
+        self.toolbar_widget = QWidget()
+        self.toolbar_widget.setStyleSheet(
+            "QWidget { background-color: #0f172a; color: white; } "
+            "QPushButton, QToolButton, QSpinBox { background-color: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; } "
+            "QToolButton:checked { background-color: #bfdbfe; border-color: #2563eb; } "
+            "QLabel { color: white; }"
+        )
+        toolbar = QHBoxLayout(self.toolbar_widget)
+        toolbar.setContentsMargins(6, 4, 6, 4)
         toolbar.setSpacing(6)
         self.tool_buttons = {}
         for tool, label in TOOL_NAMES.items():
@@ -293,21 +301,42 @@ class ScreenshotEditor(QWidget):
         self.btn_ocr.clicked.connect(self.run_ocr)
         toolbar.addWidget(self.btn_ocr)
 
-        layout.addLayout(toolbar)
+        self.btn_close = QPushButton("×")
+        self.btn_close.setFixedWidth(26)
+        self.btn_close.clicked.connect(self.close)
+        toolbar.addWidget(self.btn_close)
+
+        layout.addWidget(self.toolbar_widget)
 
         self.canvas = ScreenshotCanvas(pixmap)
         self.canvas.changed.connect(self._refresh_undo_buttons)
         self.width_spin.valueChanged.connect(self.canvas.set_width)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(False)
-        scroll.setWidget(self.canvas)
-        layout.addWidget(scroll, 1)
+        layout.addWidget(self.canvas)
 
         self.status = QLabel("")
-        self.status.setStyleSheet("color: #475569;")
+        self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px;")
         layout.addWidget(self.status)
         self._select_tool("pen")
         self._refresh_undo_buttons()
+        self._fit_to_capture(target_rect)
+
+    def _fit_to_capture(self, target_rect):
+        self.adjustSize()
+        width = max(self.canvas.width(), self.toolbar_widget.sizeHint().width())
+        height = self.toolbar_widget.sizeHint().height() + self.canvas.height() + self.status.sizeHint().height()
+        self.setFixedSize(width, height)
+        if target_rect:
+            self.place_at_capture(target_rect)
+
+    def place_at_capture(self, target_rect):
+        screen = QApplication.screenAt(target_rect.center()) or QApplication.primaryScreen()
+        screen_geo = screen.availableGeometry()
+        toolbar_h = self.toolbar_widget.sizeHint().height()
+        x = target_rect.x()
+        y = target_rect.y() - toolbar_h
+        x = max(screen_geo.left(), min(x, screen_geo.right() - self.width() + 1))
+        y = max(screen_geo.top(), min(y, screen_geo.bottom() - self.height() + 1))
+        self.move(x, y)
 
     def canvas_width_changed(self, value):
         self.canvas.set_width(value)
@@ -372,13 +401,27 @@ class ScreenshotEditor(QWidget):
 
     def pin_to_desktop(self):
         pinned = PinnedImageDialog(self.rendered_pixmap(), None)
-        screen = QApplication.primaryScreen()
-        if screen:
-            pinned.move(screen.availableGeometry().center() - pinned.rect().center())
+        pinned.move(self.canvas.mapToGlobal(QPoint(0, 0)))
         pinned.show()
         self.pinned_windows.append(pinned)
         self.pinned_windows = [w for w in self.pinned_windows if w.isVisible()]
         self.status.setText("已定图到桌面")
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and event.pos().y() <= self.toolbar_widget.height():
+            self._is_dragging = True
+            self._drag_start_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._is_dragging and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPos() - self._drag_start_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._is_dragging = False
+            event.accept()
 
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
