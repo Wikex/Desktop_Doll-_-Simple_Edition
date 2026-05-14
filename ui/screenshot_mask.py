@@ -142,10 +142,10 @@ class ScreenshotMask(QDialog):
 
         source_rank = {
             "uia": 0,
-            "visual": 1,
-            "ew": 2,
+            "ew": 1,
+            "visual": 2,
         }
-        candidates.sort(key=lambda item: (rect_area(item[1]), source_rank.get(item[0], 9)))
+        candidates.sort(key=lambda item: (source_rank.get(item[0], 9), rect_area(item[1])))
         return candidates[0][1]
 
     def _visual_rect_at(self, physical_pos):
@@ -236,6 +236,26 @@ class ScreenshotMask(QDialog):
             log_exception(f"Visual smart screenshot lookup failed: {e}")
             return None
 
+    def _should_use_visual_rect(self, visual_rect, standard_rect):
+        if not visual_rect:
+            return False
+
+        visual_area = rect_area(visual_rect)
+        if visual_rect.width() < 48 or visual_rect.height() < 32 or visual_area < 2500:
+            return False
+
+        if not standard_rect:
+            return True
+
+        standard_area = rect_area(standard_rect)
+        if standard_area <= 0:
+            return False
+
+        if standard_area < self._physical_screen_area() * 0.35:
+            return False
+
+        return standard_area * 0.02 <= visual_area <= standard_area * 0.85
+
     def find_best_rect(self, global_pos, include_uia=False):
         import win32gui
         phys_x, phys_y = win32gui.GetCursorPos()
@@ -268,9 +288,10 @@ class ScreenshotMask(QDialog):
                 ew_candidates.append(rect)
                 self._add_candidate(candidates, seen, "ew", rect, physical_pos)
 
+        standard_best = self._choose_best_rect(candidates)
         visual_rect = self._visual_rect_at(physical_pos)
         self.last_visual_rect = visual_rect
-        if visual_rect:
+        if self._should_use_visual_rect(visual_rect, standard_best):
             self._add_candidate(candidates, seen, "visual", visual_rect, physical_pos)
 
         self.last_ew_rect = ew_candidates[0] if ew_candidates else None
