@@ -142,6 +142,7 @@ class ScreenshotMask(QDialog):
 
         source_rank = {
             "uia": 0,
+            "visual_vm": 1,
             "ew": 1,
             "visual": 2,
         }
@@ -256,6 +257,49 @@ class ScreenshotMask(QDialog):
 
         return standard_area * 0.02 <= visual_area <= standard_area * 0.85
 
+    def _foreground_process_at(self, physical_pos):
+        try:
+            import win32gui
+            import win32process
+            import psutil
+
+            hwnd = win32gui.WindowFromPoint((physical_pos.x(), physical_pos.y()))
+            if not hwnd:
+                return ""
+            hwnd = win32gui.GetAncestor(hwnd, win32con.GA_ROOT)
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            return psutil.Process(pid).name().lower()
+        except Exception as e:
+            log_exception(f"Failed to inspect screenshot target process: {e}")
+            return ""
+
+    def _is_virtual_machine_surface(self, physical_pos):
+        return self._foreground_process_at(physical_pos) in {
+            "vmware.exe",
+            "vmplayer.exe",
+            "vmware-vmx.exe",
+            "virtualboxvm.exe",
+            "virtualbox.exe",
+            "vmconnect.exe",
+        }
+
+    def _should_use_vm_visual_rect(self, visual_rect, standard_rect):
+        if not visual_rect:
+            return False
+
+        visual_area = rect_area(visual_rect)
+        if visual_rect.width() < 64 or visual_rect.height() < 40 or visual_area < 4000:
+            return False
+        if rect_area(visual_rect) >= self._physical_screen_area() * 0.70:
+            return False
+        if not standard_rect:
+            return True
+
+        standard_area = rect_area(standard_rect)
+        if standard_area <= 0:
+            return True
+        return visual_area <= standard_area * 0.90
+
     def find_best_rect(self, global_pos, include_uia=False):
         import win32gui
         phys_x, phys_y = win32gui.GetCursorPos()
@@ -291,7 +335,11 @@ class ScreenshotMask(QDialog):
         standard_best = self._choose_best_rect(candidates)
         visual_rect = self._visual_rect_at(physical_pos)
         self.last_visual_rect = visual_rect
-        if self._should_use_visual_rect(visual_rect, standard_best):
+        is_vm_surface = self._is_virtual_machine_surface(physical_pos)
+        self.last_vm_surface = is_vm_surface
+        if is_vm_surface and self._should_use_vm_visual_rect(visual_rect, standard_best):
+            self._add_candidate(candidates, seen, "visual_vm", visual_rect, physical_pos)
+        elif self._should_use_visual_rect(visual_rect, standard_best):
             self._add_candidate(candidates, seen, "visual", visual_rect, physical_pos)
 
         self.last_ew_rect = ew_candidates[0] if ew_candidates else None
@@ -372,6 +420,8 @@ class ScreenshotMask(QDialog):
                 debug_text += f" | EW: {self.last_ew_rect.width()}x{self.last_ew_rect.height()}"
             if getattr(self, 'last_visual_rect', None):
                 debug_text += f" | VIS: {self.last_visual_rect.width()}x{self.last_visual_rect.height()}"
+            if getattr(self, 'last_vm_surface', False):
+                debug_text += " | VM"
 
             if self.current_pos_global:
                 painter.drawText(self.current_pos_global.x() - offset.x() + 15, self.current_pos_global.y() - offset.y() + 15, debug_text)
