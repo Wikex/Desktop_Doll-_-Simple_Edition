@@ -1,8 +1,14 @@
 import os
 import json
 import time
-from PySide6.QtCore import QObject, Signal, QTimer, QThread
-from core.windows_recent import list_recent_lnk_files, resolve_lnk_target, is_directory_target, ensure_windows_recent_tracking_enabled
+from PySide6.QtCore import QObject, Signal, QTimer, QThread, QFileSystemWatcher
+from core.windows_recent import (
+    get_recent_dir,
+    list_recent_lnk_files,
+    resolve_lnk_target,
+    is_directory_target,
+    ensure_windows_recent_tracking_enabled,
+)
 from utils.path_helper import get_base_dir
 from utils.logger import log_exception
 
@@ -23,54 +29,70 @@ class RecentScannerThread(QThread):
         return ext
 
     def run(self):
+        shell = None
+        pythoncom = None
         try:
-            lnk_paths = list_recent_lnk_files()
-        except Exception as e:
-            log_exception(f"Failed to list recent files: {e}")
-            lnk_paths = []
-
-        changed = False
-        new_items = []
-        updated_mtimes = self.last_scan_mtime.copy()
-
-        for lnk in lnk_paths[:50]:
             try:
-                mtime = os.path.getmtime(lnk)
-            except Exception:
-                continue
-                
-            if updated_mtimes.get(lnk) == mtime:
-                continue
-            updated_mtimes[lnk] = mtime
-            
-            target = resolve_lnk_target(lnk)
-            if not target or not os.path.exists(target):
-                continue
-                
-            if is_directory_target(target):
-                continue
-                
-            _, ext = os.path.splitext(target)
-            ext = self._normalize_ext(ext)
-            
-            if self.excluded_extensions.get(ext, False):
-                continue
-                
-            name = os.path.basename(target)
-            new_item = {
-                "path": target,
-                "name": name,
-                "ext": ext,
-                "is_app": ext == ".exe",
-                "last_seen": time.time(),
-                "created_at": time.time(),
-                "pinned": False
-            }
-            new_items.append(new_item)
-            changed = True
-            
-        if changed:
+                import pythoncom as pythoncom_module
+                import win32com.client
+
+                pythoncom = pythoncom_module
+                pythoncom.CoInitialize()
+                shell = win32com.client.Dispatch("WScript.Shell")
+            except Exception as e:
+                log_exception(f"Failed to initialize Recent COM shell: {e}")
+
+            lnk_paths = list_recent_lnk_files()
+
+            new_items = []
+            updated_mtimes = self.last_scan_mtime.copy()
+
+            for lnk in lnk_paths[:80]:
+                try:
+                    mtime = os.path.getmtime(lnk)
+                except Exception:
+                    continue
+
+                if updated_mtimes.get(lnk) == mtime:
+                    continue
+                updated_mtimes[lnk] = mtime
+
+                target = resolve_lnk_target(lnk, shell=shell)
+                if not target or not os.path.exists(target):
+                    continue
+
+                if is_directory_target(target):
+                    continue
+
+                _, ext = os.path.splitext(target)
+                ext = self._normalize_ext(ext)
+
+                if self.excluded_extensions.get(ext, False):
+                    continue
+
+                now = time.time()
+                name = os.path.basename(target)
+                new_item = {
+                    "path": target,
+                    "name": name,
+                    "ext": ext,
+                    "is_app": ext == ".exe",
+                    "last_seen": now,
+                    "created_at": now,
+                    "pinned": False
+                }
+                new_items.append(new_item)
+
             self.scan_finished.emit(new_items, updated_mtimes)
+        except Exception as e:
+            log_exception(f"Failed to scan recent files: {e}")
+            self.scan_finished.emit([], self.last_scan_mtime)
+        finally:
+            if pythoncom:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
 class RecentManager(QObject):
     items_changed = Signal(list)
@@ -84,22 +106,37 @@ class RecentManager(QObject):
         ensure_windows_recent_tracking_enabled()
         
         self.history = self._load_history()
-        
+        self._last_scan_mtime = {} # path -> mtime
+        self._rescan_requested = False
+
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
-        self.poll_timer.start(15000)
-        
-        self._last_scan_mtime = {} # path -> mtime
+        self.poll_timer.start(5000)
+
+        self._scan_debounce_timer = QTimer(self)
+        self._scan_debounce_timer.setSingleShot(True)
+        self._scan_debounce_timer.setInterval(300)
+        self._scan_debounce_timer.timeout.connect(self.tick_scan)
+
+        self._watcher = QFileSystemWatcher(self)
+        self._watcher.directoryChanged.connect(self._on_recent_dir_changed)
+        self._watch_recent_dir()
+
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(2000)
         self._save_timer.timeout.connect(self._do_save_history)
 
+        QTimer.singleShot(800, self.tick_scan)
+
     def set_tracking_enabled(self, enabled):
         was_enabled = self.tracking_enabled
         self.tracking_enabled = enabled
         if enabled and not was_enabled:
+            self._watch_recent_dir()
             self.tick_scan(silent=True)
+        elif not enabled:
+            self._clear_recent_watcher()
 
     def set_excluded_extensions(self, exts):
         if isinstance(exts, list):
@@ -209,19 +246,44 @@ class RecentManager(QObject):
         except Exception as e:
             log_exception(f"Failed to save recent history: {e}")
 
+    def _watch_recent_dir(self):
+        if not self.tracking_enabled:
+            return
+        recent_dir = get_recent_dir()
+        if not recent_dir or not os.path.isdir(recent_dir):
+            return
+        if recent_dir not in self._watcher.directories():
+            self._watcher.addPath(recent_dir)
+
+    def _clear_recent_watcher(self):
+        dirs = self._watcher.directories()
+        if dirs:
+            self._watcher.removePaths(dirs)
+
+    def _on_recent_dir_changed(self, path):
+        self._watch_recent_dir()
+        if self.tracking_enabled:
+            self._scan_debounce_timer.start()
+
     def tick_scan(self, silent=False):
         if not self.tracking_enabled and not silent:
             return
             
         if hasattr(self, '_scanner') and self._scanner.isRunning():
+            self._rescan_requested = True
             return
             
+        self._rescan_requested = False
         self._scanner = RecentScannerThread(self.excluded_extensions, self._last_scan_mtime, self)
         self._scanner.scan_finished.connect(lambda new_items, mtimes: self._on_scan_finished(new_items, mtimes, silent))
         self._scanner.start()
 
     def _on_scan_finished(self, new_items, updated_mtimes, silent):
         self._last_scan_mtime = updated_mtimes
+
+        if self._rescan_requested and self.tracking_enabled:
+            self._rescan_requested = False
+            QTimer.singleShot(0, self.tick_scan)
         
         if silent:
             return

@@ -36,9 +36,9 @@ def list_recent_lnk_files():
     lnk_files.sort(key=lambda x: x[1], reverse=True)
     return [p for p, _ in lnk_files]
 
-def resolve_lnk_target(lnk_path):
+def resolve_lnk_target(lnk_path, shell=None):
     try:
-        shell = win32com.client.Dispatch("WScript.Shell")
+        shell = shell or win32com.client.Dispatch("WScript.Shell")
         shortcut = shell.CreateShortCut(lnk_path)
         target = shortcut.Targetpath
         return target
