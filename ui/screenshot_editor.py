@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QPoint, QRect, QSize, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QFont, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF, QTextCharFormat, QTextDocument
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -148,7 +148,19 @@ class ScreenshotCanvas(QWidget):
             font.setPointSize(annotation.get("font_size", 16))
             painter.setFont(font)
             rect = annotation.get("rect")
-            if rect:
+            html = annotation.get("html", "")
+            if rect and html:
+                document = QTextDocument()
+                document.setDocumentMargin(0)
+                document.setDefaultFont(font)
+                document.setDefaultStyleSheet(f"body {{ color: {annotation.get('color', QColor(239, 68, 68)).name()}; }}")
+                document.setHtml(html)
+                document.setTextWidth(rect.width())
+                painter.save()
+                painter.translate(rect.topLeft())
+                document.drawContents(painter)
+                painter.restore()
+            elif rect:
                 painter.drawText(rect, Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, annotation.get("text", ""))
             else:
                 painter.drawText(annotation["pos"], annotation.get("text", ""))
@@ -286,12 +298,13 @@ class ScreenshotCanvas(QWidget):
         color = QColor(annotation.get("color", self.current_color)) if annotation else QColor(self.current_color)
         font_size = int(annotation.get("font_size", self.current_text_size)) if annotation else self.current_text_size
         text = annotation.get("text", "") if annotation else ""
+        html = annotation.get("html", "") if annotation else ""
         editor = TextAnnotationEditor(color, font_size, self)
         editor.finished.connect(self._commit_text_annotation)
         self._editing_text_index = edit_index
         self._editing_original_text = annotation
-        if text:
-            editor.set_text(text)
+        if text or html:
+            editor.set_text(text, html=html)
         if annotation and annotation.get("rect"):
             editor.resize(annotation["rect"].size())
             editor.set_manual_size(bool(annotation.get("manual_size", False)))
@@ -401,7 +414,9 @@ class TextAnnotationEditor(QWidget):
         self.edit.setLineWrapMode(QTextEdit.NoWrap)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.edit.document().setDocumentMargin(0)
         self.edit.setFontPointSize(self.font_size)
+        self._merge_current_text_format(self.font_size)
         self.edit.setStyleSheet(
             "QTextEdit {"
             "background: rgba(255, 255, 255, 20);"
@@ -418,8 +433,11 @@ class TextAnnotationEditor(QWidget):
     def setFocusToText(self):
         self.edit.setFocus()
 
-    def set_text(self, text):
-        self.edit.setPlainText(text)
+    def set_text(self, text, html=""):
+        if html:
+            self.edit.setHtml(html)
+        else:
+            self.edit.setPlainText(text)
         self._autosize_to_content()
 
     def set_manual_size(self, enabled):
@@ -429,12 +447,16 @@ class TextAnnotationEditor(QWidget):
 
     def set_font_size(self, size):
         self.font_size = max(8, min(72, int(size)))
-        self.edit.selectAll()
-        self.edit.setFontPointSize(self.font_size)
-        cursor = self.edit.textCursor()
-        cursor.clearSelection()
-        self.edit.setTextCursor(cursor)
+        self._merge_current_text_format(self.font_size)
         self._autosize_to_content()
+
+    def _merge_current_text_format(self, size):
+        fmt = QTextCharFormat()
+        fmt.setFontPointSize(max(8, min(72, int(size))))
+        fmt.setForeground(self.color)
+        cursor = self.edit.textCursor()
+        cursor.mergeCharFormat(fmt)
+        self.edit.mergeCurrentCharFormat(fmt)
 
     def finish(self):
         text = self.edit.toPlainText().strip()
@@ -442,6 +464,7 @@ class TextAnnotationEditor(QWidget):
             "type": "text",
             "rect": QRect(self.pos() + QPoint(self.MARGIN, self.MARGIN), self.edit.size()),
             "text": text,
+            "html": self.edit.toHtml(),
             "color": QColor(self.color),
             "width": 2,
             "font_size": self.font_size,
@@ -464,17 +487,13 @@ class TextAnnotationEditor(QWidget):
 
     def _autosize_to_content(self):
         text = self.edit.toPlainText() or " "
-        metrics = QFontMetrics(self.edit.font())
         parent = self.parentWidget()
+        document = self.edit.document()
 
         if self.manual_size:
             content_width = max(1, self.width() - self.MARGIN * 2)
-            wrapped = metrics.boundingRect(
-                QRect(0, 0, content_width, 10000),
-                Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop,
-                text,
-            )
-            height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), wrapped.height() + 14 + self.MARGIN * 2))
+            document.setTextWidth(content_width)
+            height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), int(document.size().height()) + self.MARGIN * 2 + 4))
             if parent:
                 height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
             if self.height() != height:
@@ -482,19 +501,15 @@ class TextAnnotationEditor(QWidget):
             self.update()
             return
 
-        lines = text.splitlines() or [text]
-        desired_text_width = max(metrics.horizontalAdvance(line or " ") for line in lines) + 12
+        document.setTextWidth(-1)
+        desired_text_width = int(document.idealWidth()) + 6
         max_width = self.MAX_SIZE.width()
         if parent:
             max_width = min(max_width, max(self.MIN_SIZE.width(), parent.width() - self.x()))
         content_width = max(self.MIN_SIZE.width() - self.MARGIN * 2, min(max_width - self.MARGIN * 2, desired_text_width))
-        wrapped = metrics.boundingRect(
-            QRect(0, 0, max(1, content_width), 10000),
-            Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop,
-            text,
-        )
+        document.setTextWidth(content_width)
         width = max(self.MIN_SIZE.width(), min(max_width, content_width + self.MARGIN * 2))
-        height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), wrapped.height() + 14 + self.MARGIN * 2))
+        height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), int(document.size().height()) + self.MARGIN * 2 + 4))
         if parent:
             height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
         if self.size() != QSize(width, height):
@@ -766,6 +781,7 @@ class ScreenshotEditor(QWidget):
         pixmap = self._display_pixmap_for_target(pixmap, target_rect)
         self.setWindowTitle("进阶截图")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.save_dir = save_dir or os.path.join(get_base_dir(), "screenshots")
         self.pinned_windows = []
         self._is_dragging = False
@@ -860,11 +876,11 @@ class ScreenshotEditor(QWidget):
 
         self.canvas = ScreenshotCanvas(pixmap)
         self.canvas.changed.connect(self._refresh_undo_buttons)
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.canvas, 0, Qt.AlignLeft | Qt.AlignTop)
 
         self.status = QLabel("")
-        self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px;")
-        layout.addWidget(self.status)
+        self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px; border-radius: 4px;")
+        layout.addWidget(self.status, 0, Qt.AlignLeft | Qt.AlignBottom)
         self._select_tool("pen")
         self._refresh_color_button()
         self._refresh_undo_buttons()
