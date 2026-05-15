@@ -495,13 +495,17 @@ class ScreenshotCanvas(QWidget):
         editor.finished.connect(self._commit_text_annotation)
         self._editing_text_index = edit_index
         self._editing_original_text = annotation
+        editor_pos = QPoint(pos)
+        if annotation and annotation.get("rect"):
+            content_rect = QRect(annotation["rect"])
+            margin = editor.MARGIN
+            editor.resize(content_rect.width() + margin * 2, content_rect.height() + margin * 2)
+            editor_pos = content_rect.topLeft() - QPoint(margin, margin)
+            editor.set_manual_size(bool(annotation.get("manual_size", False)))
         if text or html:
             editor.set_text(text, html=html)
-        if annotation and annotation.get("rect"):
-            editor.resize(annotation["rect"].size())
-            editor.set_manual_size(bool(annotation.get("manual_size", False)))
-        x = min(max(0, pos.x()), max(0, self.width() - editor.width()))
-        y = min(max(0, pos.y()), max(0, self.height() - editor.height()))
+        x = min(max(0, editor_pos.x()), max(0, self.width() - editor.width()))
+        y = min(max(0, editor_pos.y()), max(0, self.height() - editor.height()))
         editor.move(x, y)
         editor.show()
         editor.setFocusToText()
