@@ -504,7 +504,6 @@ class TextAnnotationEditor(QWidget):
         mid_x = self.width() // 2
         mid_y = self.height() // 2
         return {
-            "delete": QPoint(self.width() - 12, 12),
             "top_left": QPoint(1, 1),
             "top": QPoint(mid_x, 1),
             "top_right": QPoint(self.width() - 2, 1),
@@ -544,12 +543,12 @@ class TextAnnotationEditor(QWidget):
         return bounded
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            self._show_context_menu(event.globalPos())
+            event.accept()
+            return
         if event.button() == Qt.LeftButton:
             handle = self._handle_at(event.pos())
-            if handle == "delete":
-                self.delete()
-                event.accept()
-                return
             if handle:
                 self._resizing = True
                 self._resize_handle = handle
@@ -563,7 +562,7 @@ class TextAnnotationEditor(QWidget):
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.LeftButton:
             handle = self._handle_at(event.pos())
-            if handle and handle != "delete":
+            if handle:
                 self.set_manual_size(False)
                 event.accept()
                 return
@@ -588,9 +587,7 @@ class TextAnnotationEditor(QWidget):
             return
 
         handle = self._handle_at(event.pos())
-        if handle == "delete":
-            self.setCursor(Qt.PointingHandCursor)
-        elif handle in {"left", "right"}:
+        if handle in {"left", "right"}:
             self.setCursor(Qt.SizeHorCursor)
         elif handle in {"top", "bottom"}:
             self.setCursor(Qt.SizeVerCursor)
@@ -619,21 +616,25 @@ class TextAnnotationEditor(QWidget):
         painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor(37, 99, 235, 210))
-        for name, point in self._handle_points().items():
-            if name == "delete":
-                continue
+        for point in self._handle_points().values():
             painter.drawRect(
                 point.x() - self.HANDLE_SIZE // 2,
                 point.y() - self.HANDLE_SIZE // 2,
                 self.HANDLE_SIZE,
                 self.HANDLE_SIZE,
             )
-        delete_rect = QRect(self.width() - 20, 4, 16, 16)
-        painter.setBrush(QColor(239, 68, 68, 230))
-        painter.drawEllipse(delete_rect)
-        painter.setPen(QPen(Qt.white, 2))
-        painter.drawLine(delete_rect.left() + 5, delete_rect.top() + 5, delete_rect.right() - 5, delete_rect.bottom() - 5)
-        painter.drawLine(delete_rect.right() - 5, delete_rect.top() + 5, delete_rect.left() + 5, delete_rect.bottom() - 5)
+
+    def _show_context_menu(self, global_pos):
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background-color: #f8fafc; border: 1px solid #2563eb; padding: 4px; } "
+            "QMenu::item { color: #111827; padding: 5px 22px 5px 8px; } "
+            "QMenu::item:selected { background-color: #dbeafe; }"
+        )
+        delete_action = menu.addAction("删除文本框")
+        chosen = menu.exec(global_pos)
+        if chosen == delete_action:
+            self.delete()
 
     def delete(self):
         self.finished.emit({"__delete__": True})
