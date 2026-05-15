@@ -581,7 +581,11 @@ class InlineTextEdit(QTextEdit):
             owner.finish()
             event.accept()
             return
+        if owner:
+            owner.apply_typing_format()
         super().keyPressEvent(event)
+        if owner and (event.text() or event.key() in {Qt.Key_Return, Qt.Key_Enter}):
+            owner.apply_typing_format()
 
 
 class TextAnnotationEditor(QWidget):
@@ -612,8 +616,8 @@ class TextAnnotationEditor(QWidget):
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.document().setDocumentMargin(0)
-        self.edit.setFontPointSize(self.font_size)
-        self._merge_current_text_format(self.font_size)
+        self._apply_default_font()
+        self.apply_typing_format()
         self.edit.setStyleSheet(
             "QTextEdit {"
             "background: rgba(255, 255, 255, 20);"
@@ -635,6 +639,7 @@ class TextAnnotationEditor(QWidget):
             self.edit.setHtml(html)
         else:
             self.edit.setPlainText(text)
+        self.apply_typing_format()
         self._autosize_to_content()
 
     def set_manual_size(self, enabled):
@@ -644,16 +649,29 @@ class TextAnnotationEditor(QWidget):
 
     def set_font_size(self, size):
         self.font_size = max(8, min(72, int(size)))
-        self._merge_current_text_format(self.font_size)
+        self.apply_typing_format(apply_to_selection=True)
         self._autosize_to_content()
 
-    def _merge_current_text_format(self, size):
+    def _apply_default_font(self):
+        font = QFont(self.edit.font())
+        font.setPointSize(self.font_size)
+        self.edit.setFont(font)
+        self.edit.document().setDefaultFont(font)
+
+    def _typing_char_format(self):
         fmt = QTextCharFormat()
-        fmt.setFontPointSize(max(8, min(72, int(size))))
+        fmt.setFontPointSize(self.font_size)
         fmt.setForeground(self.color)
+        return fmt
+
+    def apply_typing_format(self, apply_to_selection=False):
+        self._apply_default_font()
+        fmt = self._typing_char_format()
         cursor = self.edit.textCursor()
-        cursor.mergeCharFormat(fmt)
-        self.edit.mergeCurrentCharFormat(fmt)
+        if apply_to_selection and cursor.hasSelection():
+            cursor.mergeCharFormat(fmt)
+            self.edit.setTextCursor(cursor)
+        self.edit.setCurrentCharFormat(fmt)
 
     def finish(self):
         text = self.edit.toPlainText().strip()
