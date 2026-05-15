@@ -26,7 +26,4 @@ def recognize_qimage(qimage, languages="chi_sim+eng"):
     data = bytes(buffer.data())
     
     result, elapse = engine(data)
-    if result:
-        texts = [res[1] for res in result]
-        return "\n".join(texts).strip()
-    return ""
+    return result

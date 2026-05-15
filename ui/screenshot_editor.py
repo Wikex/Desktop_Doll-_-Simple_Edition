@@ -42,49 +42,7 @@ TOOL_ICONS = {
     "text": "T",
 }
 
-class OcrResultDialog(QDialog):
-    def __init__(self, text, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("OCR 识别结果")
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.WindowCloseButtonHint)
-        self.resize(500, 400)
-        self.setStyleSheet("QDialog { background-color: #f8fafc; }")
-        
-        layout = QVBoxLayout(self)
-        
-        self.text_edit = QTextEdit()
-        self.text_edit.setPlainText(text)
-        self.text_edit.setStyleSheet("QTextEdit { font-size: 14px; padding: 5px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #1e293b; }")
-        layout.addWidget(self.text_edit)
-        
-        btn_layout = QHBoxLayout()
-        
-        self.btn_copy = QPushButton("复制选中内容 (未选中则复制全部)")
-        self.btn_copy.setCursor(Qt.PointingHandCursor)
-        self.btn_copy.setStyleSheet("QPushButton { padding: 8px 16px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold; border: none; } QPushButton:hover { background: #2563eb; }")
-        self.btn_copy.clicked.connect(self._copy_text)
-        
-        self.btn_close = QPushButton("关闭")
-        self.btn_close.setCursor(Qt.PointingHandCursor)
-        self.btn_close.setStyleSheet("QPushButton { padding: 8px 16px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold; border: none; } QPushButton:hover { background: #cbd5e1; }")
-        self.btn_close.clicked.connect(self.close)
-        
-        btn_layout.addStretch()
-        btn_layout.addWidget(self.btn_close)
-        btn_layout.addWidget(self.btn_copy)
-        
-        layout.addLayout(btn_layout)
-        
-    def _copy_text(self):
-        cursor = self.text_edit.textCursor()
-        if cursor.hasSelection():
-            selected_text = cursor.selectedText()
-            # QTextEdit uses U+2029 for paragraph separators in selectedText()
-            selected_text = selected_text.replace('\u2029', '\n')
-            QApplication.clipboard().setText(selected_text)
-        else:
-            QApplication.clipboard().setText(self.text_edit.toPlainText())
-        self.close()
+# OcrResultDialog removed as we use on-canvas OCR text selection now
 
 class ScreenshotCanvas(QWidget):
     changed = Signal()
@@ -93,6 +51,7 @@ class ScreenshotCanvas(QWidget):
         super().__init__(parent)
         self.base_pixmap = pixmap
         self.annotations = []
+        self.ocr_labels = []
         self.redo_stack = []
         self.current_annotation = None
         self.current_tool = "pen"
@@ -142,11 +101,17 @@ class ScreenshotCanvas(QWidget):
             self.update()
 
     def clear_annotations(self):
+        self.clear_ocr()
         if self.annotations:
             self.redo_stack.extend(reversed(self.annotations))
             self.annotations.clear()
             self.changed.emit()
             self.update()
+
+    def clear_ocr(self):
+        for label in self.ocr_labels:
+            label.deleteLater()
+        self.ocr_labels.clear()
 
     def _append_annotation(self, annotation):
         self._finish_text_editor()
@@ -911,6 +876,11 @@ class ScreenshotEditor(QWidget):
         self.btn_ocr.clicked.connect(self.run_ocr)
         toolbar.addWidget(self.btn_ocr)
 
+        self.btn_copy_ocr = self._make_tool_button("全", "复制全部文字")
+        self.btn_copy_ocr.clicked.connect(self.copy_all_ocr_text)
+        self.btn_copy_ocr.hide()
+        toolbar.addWidget(self.btn_copy_ocr)
+
         self._add_toolbar_separator(toolbar)
 
         self.btn_close = self._make_tool_button("×", "关闭")
@@ -1062,6 +1032,7 @@ class ScreenshotEditor(QWidget):
 
     def _clear_annotations(self):
         self.canvas.clear_annotations()
+        self.btn_copy_ocr.hide()
 
     def _refresh_undo_buttons(self):
         self.btn_undo.setEnabled(self.canvas.can_undo())
@@ -1138,6 +1109,12 @@ class ScreenshotEditor(QWidget):
             return
         super().keyPressEvent(event)
 
+    def copy_all_ocr_text(self):
+        texts = [label.text() for label in self.canvas.ocr_labels]
+        if texts:
+            QApplication.clipboard().setText("\n".join(texts))
+            self.status.setText("已复制全部文字到剪贴板")
+
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
         
@@ -1145,7 +1122,7 @@ class ScreenshotEditor(QWidget):
         QApplication.processEvents() # Force UI update
         
         try:
-            text = recognize_qimage(image)
+            result = recognize_qimage(image)
         except OcrUnavailableError as exc:
             QMessageBox.information(
                 self,
@@ -1160,11 +1137,35 @@ class ScreenshotEditor(QWidget):
             self.status.setText("就绪")
             return
 
-        if not text:
+        self.canvas.clear_ocr()
+        if not result:
             QMessageBox.information(self, "识别结果", "没有识别到文字。")
             self.status.setText("就绪")
+            self.btn_copy_ocr.hide()
             return
 
-        dialog = OcrResultDialog(text, self)
-        dialog.exec()
-        self.status.setText("OCR 识别完成")
+        for res in result:
+            box = res[0]
+            text = res[1]
+            xs = [p[0] for p in box]
+            ys = [p[1] for p in box]
+            x, y = min(xs), min(ys)
+            w, h = max(xs) - x, max(ys) - y
+            
+            label = QLabel(self.canvas)
+            label.setText(text)
+            label.setGeometry(int(x), int(y), int(w), int(h))
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+            label.setCursor(Qt.IBeamCursor)
+            
+            # Scale font to match height approximately
+            font = label.font()
+            font.setPixelSize(max(8, int(h * 0.8)))
+            label.setFont(font)
+            
+            label.setStyleSheet("QLabel { background-color: rgba(0, 120, 215, 60); color: transparent; selection-background-color: rgba(0, 120, 215, 150); selection-color: transparent; }")
+            label.show()
+            self.canvas.ocr_labels.append(label)
+
+        self.btn_copy_ocr.show()
+        self.status.setText("OCR 识别完成，可直接在图片上选中文字复制")
