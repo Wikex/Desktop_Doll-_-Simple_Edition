@@ -16,8 +16,6 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-    QDialog,
-    QPushButton
 )
 
 from core.ocr import OcrUnavailableError, recognize_qimage
@@ -42,16 +40,21 @@ TOOL_ICONS = {
     "text": "T",
 }
 
-# OcrResultDialog removed as we use on-canvas OCR text selection now
-
 class ScreenshotCanvas(QWidget):
     changed = Signal()
+    ocrCopyRequested = Signal()
+    ocrExitRequested = Signal()
 
     def __init__(self, pixmap, parent=None):
         super().__init__(parent)
         self.base_pixmap = pixmap
         self.annotations = []
-        self.ocr_labels = []
+        self.ocr_mode = False
+        self.ocr_entries = []
+        self.ocr_selected_indices = set()
+        self.ocr_selecting = False
+        self.ocr_selection_origin = QPoint()
+        self.ocr_selection_rect = QRect()
         self.redo_stack = []
         self.current_annotation = None
         self.current_tool = "pen"
@@ -63,6 +66,7 @@ class ScreenshotCanvas(QWidget):
         self._editing_original_text = None
         self._dragging_text_index = None
         self._dragging_text_offset = QPoint()
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setMouseTracking(True)
         self.setMinimumSize(QSize(pixmap.width(), pixmap.height()))
         self.setFixedSize(pixmap.size())
@@ -109,9 +113,87 @@ class ScreenshotCanvas(QWidget):
             self.update()
 
     def clear_ocr(self):
-        for label in self.ocr_labels:
-            label.deleteLater()
-        self.ocr_labels.clear()
+        self.ocr_mode = False
+        self.ocr_entries.clear()
+        self.ocr_selected_indices.clear()
+        self.ocr_selecting = False
+        self.ocr_selection_rect = QRect()
+        self.update()
+
+    def set_ocr_entries(self, entries):
+        self._finish_text_editor()
+        self.current_annotation = None
+        self.ocr_entries = []
+        for entry in entries:
+            rect = QRect(
+                int(round(entry.get("x", 0))),
+                int(round(entry.get("y", 0))),
+                max(1, int(round(entry.get("w", 0)))),
+                max(1, int(round(entry.get("h", 0)))),
+            ).intersected(self.rect())
+            text = str(entry.get("text", "")).strip()
+            if rect.isValid() and not rect.isEmpty() and text:
+                normalized = dict(entry)
+                normalized["rect"] = rect
+                normalized["x"] = rect.x()
+                normalized["y"] = rect.y()
+                normalized["w"] = rect.width()
+                normalized["h"] = rect.height()
+                normalized["cy"] = rect.center().y()
+                self.ocr_entries.append(normalized)
+        self.ocr_selected_indices.clear()
+        self.ocr_selection_rect = QRect()
+        self.ocr_selecting = False
+        self.ocr_mode = bool(self.ocr_entries)
+        self.update()
+
+    def selected_ocr_entries(self):
+        if not self.ocr_mode:
+            return []
+        if not self.ocr_selected_indices:
+            return list(self.ocr_entries)
+        return [
+            entry for index, entry in enumerate(self.ocr_entries)
+            if index in self.ocr_selected_indices
+        ]
+
+    def _update_ocr_selection(self, rect):
+        if rect.width() < 2 or rect.height() < 2:
+            self.ocr_selected_indices.clear()
+            return
+        self.ocr_selected_indices = {
+            index for index, entry in enumerate(self.ocr_entries)
+            if rect.intersects(entry["rect"])
+        }
+
+    def _hit_ocr_entry(self, pos):
+        for index in range(len(self.ocr_entries) - 1, -1, -1):
+            if self.ocr_entries[index]["rect"].contains(pos):
+                return index
+        return None
+
+    def _draw_ocr_overlay(self, painter):
+        if not self.ocr_mode:
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        normal_fill = QColor(37, 99, 235, 45)
+        normal_border = QColor(37, 99, 235, 180)
+        selected_fill = QColor(245, 158, 11, 70)
+        selected_border = QColor(245, 158, 11, 230)
+        for index, entry in enumerate(self.ocr_entries):
+            rect = entry["rect"]
+            selected = index in self.ocr_selected_indices
+            painter.fillRect(rect, selected_fill if selected else normal_fill)
+            painter.setPen(QPen(selected_border if selected else normal_border, 1))
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+        if self.ocr_selecting and not self.ocr_selection_rect.isNull():
+            painter.setBrush(QColor(37, 99, 235, 35))
+            pen = QPen(QColor(37, 99, 235, 230), 1)
+            pen.setStyle(Qt.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(self.ocr_selection_rect.adjusted(0, 0, -1, -1))
+        painter.restore()
 
     def _append_annotation(self, annotation):
         self._finish_text_editor()
@@ -230,8 +312,19 @@ class ScreenshotCanvas(QWidget):
             self._draw_annotation(painter, annotation)
         if self.current_annotation:
             self._draw_annotation(painter, self.current_annotation)
+        self._draw_ocr_overlay(painter)
 
     def mousePressEvent(self, event):
+        if self.ocr_mode:
+            if event.button() == Qt.LeftButton:
+                self.ocr_selecting = True
+                self.ocr_selection_origin = event.pos()
+                self.ocr_selection_rect = QRect(event.pos(), event.pos()).normalized()
+                self.ocr_selected_indices.clear()
+                self.update()
+                event.accept()
+            return
+
         if event.button() != Qt.LeftButton:
             return
 
@@ -252,6 +345,14 @@ class ScreenshotCanvas(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self.ocr_mode:
+            if self.ocr_selecting and event.buttons() & Qt.LeftButton:
+                self.ocr_selection_rect = QRect(self.ocr_selection_origin, event.pos()).normalized().intersected(self.rect())
+                self._update_ocr_selection(self.ocr_selection_rect)
+                self.update()
+                event.accept()
+            return
+
         if self._dragging_text_index is not None and event.buttons() & Qt.LeftButton:
             rect = QRect(self.annotations[self._dragging_text_index]["rect"])
             rect.moveTopLeft(event.pos() - self._dragging_text_offset)
@@ -275,6 +376,19 @@ class ScreenshotCanvas(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event):
+        if self.ocr_mode:
+            if event.button() == Qt.LeftButton and self.ocr_selecting:
+                self.ocr_selecting = False
+                if self.ocr_selection_rect.width() < 4 and self.ocr_selection_rect.height() < 4:
+                    hit_index = self._hit_ocr_entry(event.pos())
+                    self.ocr_selected_indices = {hit_index} if hit_index is not None else set()
+                    self.ocr_selection_rect = QRect()
+                else:
+                    self._update_ocr_selection(self.ocr_selection_rect)
+                self.update()
+                event.accept()
+            return
+
         if event.button() == Qt.LeftButton and self._dragging_text_index is not None:
             self._dragging_text_index = None
             event.accept()
@@ -292,6 +406,9 @@ class ScreenshotCanvas(QWidget):
         self._append_annotation(annotation)
 
     def mouseDoubleClickEvent(self, event):
+        if self.ocr_mode:
+            event.accept()
+            return
         if event.button() == Qt.LeftButton:
             text_index = self._hit_text_annotation(event.pos())
             if text_index is not None:
@@ -302,6 +419,20 @@ class ScreenshotCanvas(QWidget):
                 event.accept()
                 return
         super().mouseDoubleClickEvent(event)
+
+    def keyPressEvent(self, event):
+        if self.ocr_mode:
+            if event.matches(QKeySequence.Copy):
+                self.ocrCopyRequested.emit()
+                event.accept()
+                return
+            if event.key() == Qt.Key_Escape:
+                self.ocrExitRequested.emit()
+                event.accept()
+                return
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _start_text_editor(self, pos, annotation=None, edit_index=None):
         self._finish_text_editor()
@@ -886,36 +1017,14 @@ class ScreenshotEditor(QWidget):
 
         self.canvas = ScreenshotCanvas(pixmap)
         self.canvas.changed.connect(self._refresh_undo_buttons)
+        self.canvas.ocrCopyRequested.connect(self._copy_ocr_selection)
+        self.canvas.ocrExitRequested.connect(self._exit_ocr_mode)
         layout.addWidget(self.canvas, 0, Qt.AlignLeft | Qt.AlignTop)
 
         self.status = QLabel("")
         self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px; border-radius: 4px;")
         layout.addWidget(self.status, 0, Qt.AlignLeft | Qt.AlignBottom)
 
-        self.ocr_panel = QWidget()
-        self.ocr_panel.setStyleSheet("background-color: #f8fafc; border: 1px solid #2563eb;")
-        ocr_layout = QVBoxLayout(self.ocr_panel)
-        ocr_layout.setContentsMargins(6, 6, 6, 6)
-        ocr_layout.setSpacing(4)
-        ocr_actions = QHBoxLayout()
-        self.btn_ocr_copy = QPushButton("复制全部")
-        self.btn_ocr_copy.clicked.connect(self._copy_ocr_text)
-        self.btn_ocr_close = QPushButton("关闭")
-        self.btn_ocr_close.clicked.connect(self._hide_ocr_panel)
-        ocr_actions.addWidget(self.btn_ocr_copy)
-        ocr_actions.addWidget(self.btn_ocr_close)
-        ocr_actions.addStretch()
-        self.ocr_text = QTextEdit()
-        self.ocr_text.setReadOnly(True)
-        self.ocr_text.setAcceptRichText(False)
-        self.ocr_text.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
-        self.ocr_text.setMinimumHeight(86)
-        self.ocr_text.setMaximumHeight(150)
-        self.ocr_text.setStyleSheet("QTextEdit { background: white; color: #111827; border: 1px solid #cbd5e1; padding: 4px; }")
-        ocr_layout.addLayout(ocr_actions)
-        ocr_layout.addWidget(self.ocr_text)
-        self.ocr_panel.hide()
-        layout.addWidget(self.ocr_panel)
         self._select_tool("pen")
         self._refresh_color_button()
         self._refresh_undo_buttons()
@@ -968,9 +1077,6 @@ class ScreenshotEditor(QWidget):
         self.adjustSize()
         width = max(self.canvas.width(), self.toolbar_widget.sizeHint().width())
         height = self.toolbar_widget.sizeHint().height() + self.canvas.height() + self.status.sizeHint().height()
-        if self.ocr_panel.isVisible():
-            width = max(width, self.ocr_panel.sizeHint().width())
-            height += self.ocr_panel.sizeHint().height()
         self.setFixedSize(width, height)
 
     def place_at_capture(self, target_rect):
@@ -1060,6 +1166,10 @@ class ScreenshotEditor(QWidget):
         self.canvas.clear_annotations()
 
     def _refresh_undo_buttons(self):
+        if self.canvas.ocr_mode:
+            self.btn_undo.setEnabled(False)
+            self.btn_redo.setEnabled(False)
+            return
         self.btn_undo.setEnabled(self.canvas.can_undo())
         self.btn_redo.setEnabled(self.canvas.can_redo())
 
@@ -1071,15 +1181,39 @@ class ScreenshotEditor(QWidget):
         QApplication.clipboard().setPixmap(self.rendered_pixmap())
         self.status.setText("已复制到剪贴板")
 
-    def _copy_ocr_text(self):
-        text = self.ocr_text.toPlainText().strip()
+    def _set_ocr_mode_ui(self, enabled):
+        for btn in self.tool_buttons.values():
+            btn.setEnabled(not enabled)
+        for btn in (
+            self.btn_color,
+            self.btn_undo,
+            self.btn_redo,
+            self.btn_clear,
+            self.btn_pin,
+            self.btn_quick_save,
+            self.btn_copy,
+            self.btn_save_as,
+            self.btn_ocr,
+        ):
+            btn.setEnabled(not enabled)
+        self._hide_pen_size_menu()
+        self._hide_text_size_menu()
+        if not enabled:
+            self._refresh_undo_buttons()
+
+    def _copy_ocr_selection(self):
+        text = self._format_ocr_text(self.canvas.selected_ocr_entries())
         if text:
             QApplication.clipboard().setText(text)
-            self.status.setText("OCR 文字已复制")
+            count = len(self.canvas.selected_ocr_entries())
+            self.status.setText(f"已复制 OCR 文字：{count} 处")
+        else:
+            self.status.setText("没有可复制的 OCR 文字")
 
-    def _hide_ocr_panel(self):
-        self.ocr_panel.hide()
-        self._resize_to_content()
+    def _exit_ocr_mode(self):
+        self.canvas.clear_ocr()
+        self._set_ocr_mode_ui(False)
+        self.status.setText("已退出 OCR 文字复制模式")
 
     def _default_save_path(self):
         os.makedirs(self.save_dir, exist_ok=True)
@@ -1134,6 +1268,17 @@ class ScreenshotEditor(QWidget):
             event.accept()
 
     def keyPressEvent(self, event):
+        if self.canvas.ocr_mode:
+            if event.matches(QKeySequence.Copy):
+                self._copy_ocr_selection()
+                event.accept()
+                return
+            if event.key() == Qt.Key_Escape:
+                self._exit_ocr_mode()
+                event.accept()
+                return
+            event.accept()
+            return
         if event.matches(QKeySequence.Undo):
             self._undo()
             event.accept()
@@ -1147,9 +1292,8 @@ class ScreenshotEditor(QWidget):
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
         
-        self.ocr_panel.hide()
-        self.ocr_text.clear()
-        self._resize_to_content()
+        self.canvas.clear_ocr()
+        self._set_ocr_mode_ui(False)
         self.status.setText("正在识别文字...")
         QApplication.processEvents() # Force UI update
         
@@ -1169,7 +1313,6 @@ class ScreenshotEditor(QWidget):
             self.status.setText("就绪")
             return
 
-        self.canvas.clear_ocr()
         if not result:
             QMessageBox.information(self, "识别结果", "没有识别到文字。")
             self.status.setText("就绪")
@@ -1191,10 +1334,14 @@ class ScreenshotEditor(QWidget):
 
         text = self._format_ocr_text(entries)
         if text:
-            self.ocr_text.setPlainText(text)
-            self.ocr_panel.show()
-            self._resize_to_content()
-            self.status.setText(f"OCR 识别完成：{len(entries)} 处文字，可连续选择复制")
+            self.canvas.set_ocr_entries(entries)
+            if not self.canvas.ocr_mode:
+                QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
+                self.status.setText("就绪")
+                return
+            self._set_ocr_mode_ui(True)
+            self.canvas.setFocus()
+            self.status.setText(f"OCR 模式：原图拖选文字，Ctrl+C 复制，Esc 退出；未选择时复制全部（{len(entries)} 处）")
         else:
             QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
             self.status.setText("就绪")
