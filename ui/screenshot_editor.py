@@ -124,7 +124,7 @@ class ScreenshotCanvas(QWidget):
         self._finish_text_editor()
         self.current_annotation = None
         self.ocr_entries = []
-        for entry in entries:
+        for source_index, entry in enumerate(entries):
             rect = QRect(
                 int(round(entry.get("x", 0))),
                 int(round(entry.get("y", 0))),
@@ -133,19 +133,43 @@ class ScreenshotCanvas(QWidget):
             ).intersected(self.rect())
             text = str(entry.get("text", "")).strip()
             if rect.isValid() and not rect.isEmpty() and text:
-                normalized = dict(entry)
-                normalized["rect"] = rect
-                normalized["x"] = rect.x()
-                normalized["y"] = rect.y()
-                normalized["w"] = rect.width()
-                normalized["h"] = rect.height()
-                normalized["cy"] = rect.center().y()
-                self.ocr_entries.append(normalized)
+                self.ocr_entries.extend(self._split_ocr_entry_to_chars(entry, rect, text, source_index))
         self.ocr_selected_indices.clear()
         self.ocr_selection_rect = QRect()
         self.ocr_selecting = False
         self.ocr_mode = bool(self.ocr_entries)
         self.update()
+
+    def _split_ocr_entry_to_chars(self, entry, rect, text, source_index):
+        chars = list(text)
+        if not chars:
+            return []
+        char_entries = []
+        left = rect.left()
+        width = rect.width()
+        for char_index, char in enumerate(chars):
+            char_left = left + int(round(width * char_index / len(chars)))
+            char_right = left + int(round(width * (char_index + 1) / len(chars))) - 1
+            char_rect = QRect(
+                char_left,
+                rect.top(),
+                max(1, char_right - char_left + 1),
+                rect.height(),
+            ).intersected(self.rect())
+            if not char_rect.isValid() or char_rect.isEmpty():
+                continue
+            normalized = dict(entry)
+            normalized["text"] = char
+            normalized["rect"] = char_rect
+            normalized["x"] = char_rect.x()
+            normalized["y"] = char_rect.y()
+            normalized["w"] = char_rect.width()
+            normalized["h"] = char_rect.height()
+            normalized["cy"] = char_rect.center().y()
+            normalized["source_index"] = source_index
+            normalized["char_index"] = char_index
+            char_entries.append(normalized)
+        return char_entries
 
     def selected_ocr_entries(self):
         if not self.ocr_mode:
@@ -163,7 +187,7 @@ class ScreenshotCanvas(QWidget):
             return
         self.ocr_selected_indices = {
             index for index, entry in enumerate(self.ocr_entries)
-            if rect.intersects(entry["rect"])
+            if rect.contains(entry["rect"].center())
         }
 
     def _hit_ocr_entry(self, pos):
@@ -1341,7 +1365,7 @@ class ScreenshotEditor(QWidget):
                 return
             self._set_ocr_mode_ui(True)
             self.canvas.setFocus()
-            self.status.setText(f"OCR 模式：原图拖选文字，Ctrl+C 复制，Esc 退出；未选择时复制全部（{len(entries)} 处）")
+            self.status.setText(f"OCR 模式：原图拖选单字或文字，Ctrl+C 复制，Esc 退出；未选择时复制全部（{len(entries)} 处）")
         else:
             QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
             self.status.setText("就绪")
@@ -1365,5 +1389,42 @@ class ScreenshotEditor(QWidget):
         output = []
         for line in lines:
             line = sorted(line, key=lambda item: item["x"])
-            output.append(" ".join(item["text"] for item in line if item["text"]).strip())
+            output.append(self._format_ocr_line(line))
         return "\n".join(line for line in output if line).strip()
+
+    def _format_ocr_line(self, line):
+        segments = []
+        chars = []
+        current_source = None
+        last_char_index = None
+
+        def flush_chars():
+            nonlocal chars, current_source, last_char_index
+            if chars:
+                segments.append("".join(chars))
+            chars = []
+            current_source = None
+            last_char_index = None
+
+        for item in line:
+            text = item.get("text", "")
+            if not text:
+                continue
+            source_index = item.get("source_index")
+            char_index = item.get("char_index")
+            if source_index is None or char_index is None:
+                flush_chars()
+                segments.append(text)
+                continue
+            if (
+                current_source is not None
+                and (source_index != current_source or char_index != last_char_index + 1)
+            ):
+                flush_chars()
+            if current_source is None:
+                current_source = source_index
+            chars.append(text)
+            last_char_index = char_index
+
+        flush_chars()
+        return " ".join(segment for segment in segments if segment).strip()
