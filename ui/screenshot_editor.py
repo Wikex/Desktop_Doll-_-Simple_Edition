@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QTextEdit,
     QToolButton,
@@ -352,18 +353,20 @@ class ToolButton(QToolButton):
         super().mousePressEvent(event)
 
 
-class PenSizePopup(QWidget):
+class PenSizeMenu(QMenu):
     sizeChanged = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.value = 4
-        self.setFixedSize(104, 58)
         self.setStyleSheet(
-            "PenSizePopup { background-color: #f8fafc; border: 1px solid #2563eb; } "
+            "QMenu { background-color: #f8fafc; border: 1px solid #2563eb; padding: 5px; } "
+            "QMenu::item { color: #111827; padding: 5px 24px 5px 8px; border-radius: 2px; } "
+            "QMenu::item:selected { background-color: #dbeafe; } "
             "QLabel { color: #111827; font-size: 12px; }"
         )
-        layout = QVBoxLayout(self)
+        panel = QWidget(self)
+        layout = QVBoxLayout(panel)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(2)
         self.preview = QLabel()
@@ -373,12 +376,25 @@ class PenSizePopup(QWidget):
         self.label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.preview)
         layout.addWidget(self.label)
+        from PySide6.QtWidgets import QWidgetAction
+        header_action = QWidgetAction(self)
+        header_action.setDefaultWidget(panel)
+        self.addAction(header_action)
+        self.addSeparator()
+        self.size_actions = {}
+        for size in (2, 4, 6, 8, 12, 16, 24):
+            action = self.addAction(f"{size}px")
+            action.triggered.connect(lambda checked=False, value=size: self.set_size(value))
+            self.size_actions[size] = action
         self.set_size(self.value, emit=False)
 
     def set_size(self, value, emit=True):
         self.value = max(1, min(24, int(value)))
-        self.label.setText(f"{self.value}px  滚轮调整")
+        self.label.setText(f"画笔 {self.value}px  滚轮调整")
         self.preview.setPixmap(self._preview_pixmap())
+        for size, action in self.size_actions.items():
+            prefix = "✓ " if size == self.value else "  "
+            action.setText(f"{prefix}{size}px")
         if emit:
             self.sizeChanged.emit(self.value)
 
@@ -410,7 +426,7 @@ class ScreenshotEditor(QWidget):
         self.pinned_windows = []
         self._is_dragging = False
         self._drag_start_pos = QPoint()
-        self.pen_size_popup = None
+        self.pen_size_menu = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -437,7 +453,7 @@ class ScreenshotEditor(QWidget):
             btn.clicked.connect(lambda checked=False, t=tool: self._select_tool(t))
             if tool == "pen":
                 btn.setToolTip("画笔\n按住 Shift 画直线\n右键调整大小")
-                btn.rightClicked.connect(self._toggle_pen_size_popup)
+                btn.rightClicked.connect(self._show_pen_size_menu)
             toolbar.addWidget(btn)
             self.tool_buttons[tool] = btn
 
@@ -567,37 +583,29 @@ class ScreenshotEditor(QWidget):
         for name, btn in self.tool_buttons.items():
             btn.setChecked(name == tool)
         if tool != "pen":
-            self._hide_pen_size_popup()
+            self._hide_pen_size_menu()
 
-    def _toggle_pen_size_popup(self):
+    def _show_pen_size_menu(self):
         self._select_tool("pen")
-        if self.pen_size_popup and self.pen_size_popup.isVisible():
-            self.pen_size_popup.hide()
-            return
-        if not self.pen_size_popup:
-            self.pen_size_popup = PenSizePopup(self)
-            self.pen_size_popup.sizeChanged.connect(self._set_pen_size)
-        self.pen_size_popup.set_size(self.canvas.current_width, emit=False)
-        self._place_pen_size_popup()
-        self.pen_size_popup.show()
-        self.pen_size_popup.raise_()
-
-    def _place_pen_size_popup(self):
-        if not self.pen_size_popup:
-            return
+        if not self.pen_size_menu:
+            self.pen_size_menu = PenSizeMenu(self)
+            self.pen_size_menu.sizeChanged.connect(self._set_pen_size)
+        self.pen_size_menu.set_size(self.canvas.current_width, emit=False)
         btn = self.tool_buttons.get("pen")
         if not btn:
             return
-        pos = btn.mapTo(self, QPoint(0, btn.height() + 4))
-        if pos.y() + self.pen_size_popup.height() > self.height():
-            pos = btn.mapTo(self, QPoint(0, -self.pen_size_popup.height() - 4))
-        x = max(0, min(pos.x(), self.width() - self.pen_size_popup.width()))
-        y = max(0, min(pos.y(), self.height() - self.pen_size_popup.height()))
-        self.pen_size_popup.move(x, y)
+        below = btn.mapToGlobal(QPoint(0, btn.height()))
+        above = btn.mapToGlobal(QPoint(0, -self.pen_size_menu.sizeHint().height()))
+        screen = QApplication.screenAt(below) or QApplication.primaryScreen()
+        screen_geo = screen.availableGeometry()
+        pos = below
+        if below.y() + self.pen_size_menu.sizeHint().height() > screen_geo.bottom():
+            pos = above
+        self.pen_size_menu.popup(pos)
 
-    def _hide_pen_size_popup(self):
-        if self.pen_size_popup:
-            self.pen_size_popup.hide()
+    def _hide_pen_size_menu(self):
+        if self.pen_size_menu:
+            self.pen_size_menu.hide()
 
     def _set_pen_size(self, value):
         self.canvas.set_width(value)
