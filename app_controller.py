@@ -277,13 +277,28 @@ class FloatingAssistant:
         browser_path = str(self.options.get("browser_path", "") or "").strip()
         if browser_path:
             try:
-                if os.path.exists(browser_path) or browser_path.lower() in {"msedge", "chrome", "firefox"}:
+                if os.path.exists(browser_path):
                     subprocess.Popen([browser_path, url])
+                    return
+                elif browser_path.lower() in {"msedge", "chrome", "firefox"}:
+                    # Try using start with shell or just webbrowser
+                    if os.name == "nt":
+                        os.system(f'start {browser_path} "{url}"')
+                    else:
+                        subprocess.Popen([browser_path, url])
                     return
             except Exception as e:
                 log_exception(f"Failed to open browser '{browser_path}': {e}")
 
-        webbrowser.open(url)
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            log_exception(f"Fallback webbrowser.open failed for '{url}': {e}")
+            if hasattr(os, "startfile"):
+                try:
+                    os.startfile(url)
+                except Exception as e2:
+                    log_exception(f"Fallback os.startfile failed for '{url}': {e2}")
 
     def on_record_ball_clicked(self):
         if self.is_recording:
