@@ -114,7 +114,7 @@ class RecentManager(QObject):
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
-        self.poll_timer.start(5000)
+        self.poll_timer.start(1000)
 
         self._scan_debounce_timer = QTimer(self)
         self._scan_debounce_timer.setSingleShot(True)
