@@ -392,7 +392,7 @@ class TextAnnotationEditor(QWidget):
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.edit = InlineTextEdit(self)
         self.edit.setAcceptRichText(False)
-        self.edit.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.edit.setLineWrapMode(QTextEdit.NoWrap)
         self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.edit.setFontPointSize(self.font_size)
@@ -419,8 +419,7 @@ class TextAnnotationEditor(QWidget):
     def set_manual_size(self, enabled):
         self.manual_size = bool(enabled)
         self.edit.setLineWrapMode(QTextEdit.WidgetWidth if self.manual_size else QTextEdit.NoWrap)
-        if not self.manual_size:
-            self._autosize_to_content()
+        self._autosize_to_content()
 
     def set_font_size(self, size):
         self.font_size = max(8, min(72, int(size)))
@@ -458,16 +457,28 @@ class TextAnnotationEditor(QWidget):
         super().resizeEvent(event)
 
     def _autosize_to_content(self):
+        text = self.edit.toPlainText() or " "
+        metrics = QFontMetrics(self.edit.font())
+        parent = self.parentWidget()
+
         if self.manual_size:
+            content_width = max(1, self.width() - self.MARGIN * 2)
+            wrapped = metrics.boundingRect(
+                QRect(0, 0, content_width, 10000),
+                Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop,
+                text,
+            )
+            height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), wrapped.height() + 14 + self.MARGIN * 2))
+            if parent:
+                height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
+            if self.height() != height:
+                self.resize(self.width(), height)
             self.update()
             return
 
-        text = self.edit.toPlainText() or " "
-        metrics = QFontMetrics(self.edit.font())
         lines = text.splitlines() or [text]
         desired_text_width = max(metrics.horizontalAdvance(line or " ") for line in lines) + 12
         max_width = self.MAX_SIZE.width()
-        parent = self.parentWidget()
         if parent:
             max_width = min(max_width, max(self.MIN_SIZE.width(), parent.width() - self.x()))
         content_width = max(self.MIN_SIZE.width() - self.MARGIN * 2, min(max_width - self.MARGIN * 2, desired_text_width))
