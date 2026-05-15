@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -30,6 +31,14 @@ TOOL_NAMES = {
     "arrow": "箭头",
     "text": "文字",
     "mosaic": "马赛克",
+}
+
+TOOL_ICONS = {
+    "rect": "□",
+    "arrow": "↗",
+    "pen": "✎",
+    "mosaic": "▦",
+    "text": "T",
 }
 
 
@@ -239,73 +248,84 @@ class ScreenshotEditor(QWidget):
         layout.setSpacing(0)
 
         self.toolbar_widget = QWidget()
+        self.toolbar_widget.setObjectName("screenshotToolbar")
         self.toolbar_widget.setStyleSheet(
-            "QWidget { background-color: #0f172a; color: white; } "
-            "QPushButton, QToolButton, QSpinBox { background-color: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; } "
-            "QToolButton:checked { background-color: #bfdbfe; border-color: #2563eb; } "
-            "QLabel { color: white; }"
+            "#screenshotToolbar { background-color: #f8fafc; border: 1px solid #2563eb; } "
+            "QToolButton, QPushButton { background-color: transparent; color: #2f3337; border: 0; border-radius: 2px; padding: 0; font-size: 22px; } "
+            "QToolButton:hover, QPushButton:hover { background-color: #e5e7eb; } "
+            "QToolButton:checked { background-color: #dbeafe; color: #1d4ed8; } "
+            "QToolButton:disabled, QPushButton:disabled { color: #a3aab3; } "
+            "QSpinBox { background-color: transparent; color: #2f3337; border: 0; padding: 0 2px; font-size: 13px; } "
+            "QFrame { color: #c4c9d0; background-color: #c4c9d0; } "
+            "QLabel { color: #4b5563; }"
         )
         toolbar = QHBoxLayout(self.toolbar_widget)
-        toolbar.setContentsMargins(6, 4, 6, 4)
-        toolbar.setSpacing(6)
+        toolbar.setContentsMargins(8, 6, 8, 6)
+        toolbar.setSpacing(5)
         self.tool_buttons = {}
         for tool, label in TOOL_NAMES.items():
-            btn = QToolButton()
-            btn.setText(label)
+            btn = self._make_tool_button(TOOL_ICONS.get(tool, label), label)
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked=False, t=tool: self._select_tool(t))
             toolbar.addWidget(btn)
             self.tool_buttons[tool] = btn
 
-        self.btn_color = QPushButton("颜色")
+        self._add_toolbar_separator(toolbar)
+
+        self.btn_color = self._make_tool_button("■", "颜色")
+        self.btn_color.setFixedSize(34, 32)
         self.btn_color.clicked.connect(self._choose_color)
         toolbar.addWidget(self.btn_color)
 
-        toolbar.addWidget(QLabel("粗细"))
         self.width_spin = QSpinBox()
         self.width_spin.setRange(1, 24)
         self.width_spin.setValue(4)
+        self.width_spin.setToolTip("粗细")
+        self.width_spin.setFixedSize(42, 32)
         self.width_spin.valueChanged.connect(self.canvas_width_changed)
         toolbar.addWidget(self.width_spin)
 
-        self.btn_undo = QPushButton("撤销")
+        self._add_toolbar_separator(toolbar)
+
+        self.btn_undo = self._make_tool_button("↶", "撤销 Ctrl+Z")
         self.btn_undo.setToolTip("Ctrl+Z")
         self.btn_undo.clicked.connect(self._undo)
         toolbar.addWidget(self.btn_undo)
 
-        self.btn_redo = QPushButton("重做")
+        self.btn_redo = self._make_tool_button("↷", "重做 Ctrl+Y")
         self.btn_redo.setToolTip("Ctrl+Y")
         self.btn_redo.clicked.connect(self._redo)
         toolbar.addWidget(self.btn_redo)
 
-        self.btn_clear = QPushButton("清标注")
+        self.btn_clear = self._make_tool_button("×", "清除标注")
         self.btn_clear.clicked.connect(self._clear_annotations)
         toolbar.addWidget(self.btn_clear)
 
         toolbar.addStretch()
 
-        self.btn_copy = QPushButton("复制")
-        self.btn_copy.clicked.connect(self.copy_to_clipboard)
-        toolbar.addWidget(self.btn_copy)
-
-        self.btn_quick_save = QPushButton("快速保存")
-        self.btn_quick_save.clicked.connect(self.quick_save)
-        toolbar.addWidget(self.btn_quick_save)
-
-        self.btn_save_as = QPushButton("另存为")
-        self.btn_save_as.clicked.connect(self.save_as)
-        toolbar.addWidget(self.btn_save_as)
-
-        self.btn_pin = QPushButton("定图")
+        self.btn_pin = self._make_tool_button("⌖", "定图")
         self.btn_pin.clicked.connect(self.pin_to_desktop)
         toolbar.addWidget(self.btn_pin)
 
-        self.btn_ocr = QPushButton("识别文字")
+        self.btn_quick_save = self._make_tool_button("▣", "快速保存")
+        self.btn_quick_save.clicked.connect(self.quick_save)
+        toolbar.addWidget(self.btn_quick_save)
+
+        self.btn_copy = self._make_tool_button("⧉", "复制")
+        self.btn_copy.clicked.connect(self.copy_to_clipboard)
+        toolbar.addWidget(self.btn_copy)
+
+        self.btn_save_as = self._make_tool_button("▤", "另存为")
+        self.btn_save_as.clicked.connect(self.save_as)
+        toolbar.addWidget(self.btn_save_as)
+
+        self.btn_ocr = self._make_tool_button("文", "识别文字")
         self.btn_ocr.clicked.connect(self.run_ocr)
         toolbar.addWidget(self.btn_ocr)
 
-        self.btn_close = QPushButton("×")
-        self.btn_close.setFixedWidth(26)
+        self._add_toolbar_separator(toolbar)
+
+        self.btn_close = self._make_tool_button("×", "关闭")
         self.btn_close.clicked.connect(self.close)
         toolbar.addWidget(self.btn_close)
 
@@ -320,8 +340,36 @@ class ScreenshotEditor(QWidget):
         self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px;")
         layout.addWidget(self.status)
         self._select_tool("pen")
+        self._refresh_color_button()
         self._refresh_undo_buttons()
         self._fit_to_capture(target_rect)
+
+    def _make_tool_button(self, text, tooltip):
+        btn = QToolButton()
+        btn.setText(text)
+        btn.setToolTip(tooltip)
+        btn.setFixedSize(34, 32)
+        return btn
+
+    def _add_toolbar_separator(self, toolbar):
+        line = QFrame()
+        line.setFrameShape(QFrame.VLine)
+        line.setFrameShadow(QFrame.Plain)
+        line.setFixedSize(1, 24)
+        toolbar.addWidget(line)
+
+    def _refresh_color_button(self):
+        color = self.canvas.current_color.name()
+        self.btn_color.setStyleSheet(
+            "QToolButton {"
+            "background-color: #f8fafc;"
+            "border: 0;"
+            "border-radius: 2px;"
+            f"color: {color};"
+            "font-size: 22px;"
+            "}"
+            "QToolButton:hover { background-color: #e5e7eb; }"
+        )
 
     def _display_pixmap_for_target(self, pixmap, target_rect):
         if not target_rect or target_rect.width() <= 0 or target_rect.height() <= 0:
@@ -364,6 +412,7 @@ class ScreenshotEditor(QWidget):
         color = QColorDialog.getColor(self.canvas.current_color, self, "选择标注颜色")
         if color.isValid():
             self.canvas.set_color(color)
+            self._refresh_color_button()
 
     def _undo(self):
         self.canvas.undo()
