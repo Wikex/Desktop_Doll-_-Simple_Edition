@@ -55,6 +55,8 @@ class ScreenshotCanvas(QWidget):
         self.ocr_selecting = False
         self.ocr_selection_origin = QPoint()
         self.ocr_selection_rect = QRect()
+        self.ocr_selection_mode = "replace"
+        self.ocr_selection_base_indices = set()
         self.redo_stack = []
         self.current_annotation = None
         self.current_tool = "pen"
@@ -118,6 +120,8 @@ class ScreenshotCanvas(QWidget):
         self.ocr_selected_indices.clear()
         self.ocr_selecting = False
         self.ocr_selection_rect = QRect()
+        self.ocr_selection_mode = "replace"
+        self.ocr_selection_base_indices.clear()
         self.update()
 
     def set_ocr_entries(self, entries):
@@ -137,6 +141,8 @@ class ScreenshotCanvas(QWidget):
         self.ocr_selected_indices.clear()
         self.ocr_selection_rect = QRect()
         self.ocr_selecting = False
+        self.ocr_selection_mode = "replace"
+        self.ocr_selection_base_indices.clear()
         self.ocr_mode = bool(self.ocr_entries)
         self.update()
 
@@ -182,13 +188,30 @@ class ScreenshotCanvas(QWidget):
         ]
 
     def _update_ocr_selection(self, rect):
+        self._apply_ocr_selection(self._ocr_indices_in_rect(rect))
+
+    def _ocr_indices_in_rect(self, rect):
         if rect.width() < 2 or rect.height() < 2:
-            self.ocr_selected_indices.clear()
-            return
-        self.ocr_selected_indices = {
+            return set()
+        return {
             index for index, entry in enumerate(self.ocr_entries)
             if rect.contains(entry["rect"].center())
         }
+
+    def _apply_ocr_selection(self, indices):
+        if self.ocr_selection_mode == "add":
+            self.ocr_selected_indices = set(self.ocr_selection_base_indices) | set(indices)
+        elif self.ocr_selection_mode == "remove":
+            self.ocr_selected_indices = set(self.ocr_selection_base_indices) - set(indices)
+        else:
+            self.ocr_selected_indices = set(indices)
+
+    def _ocr_selection_mode_from_modifiers(self, modifiers):
+        if modifiers & Qt.AltModifier:
+            return "remove"
+        if modifiers & Qt.ControlModifier:
+            return "add"
+        return "replace"
 
     def _hit_ocr_entry(self, pos):
         for index in range(len(self.ocr_entries) - 1, -1, -1):
@@ -344,7 +367,10 @@ class ScreenshotCanvas(QWidget):
                 self.ocr_selecting = True
                 self.ocr_selection_origin = event.pos()
                 self.ocr_selection_rect = QRect(event.pos(), event.pos()).normalized()
-                self.ocr_selected_indices.clear()
+                self.ocr_selection_mode = self._ocr_selection_mode_from_modifiers(event.modifiers())
+                self.ocr_selection_base_indices = set(self.ocr_selected_indices)
+                if self.ocr_selection_mode == "replace":
+                    self.ocr_selected_indices.clear()
                 self.update()
                 event.accept()
             return
@@ -405,10 +431,11 @@ class ScreenshotCanvas(QWidget):
                 self.ocr_selecting = False
                 if self.ocr_selection_rect.width() < 4 and self.ocr_selection_rect.height() < 4:
                     hit_index = self._hit_ocr_entry(event.pos())
-                    self.ocr_selected_indices = {hit_index} if hit_index is not None else set()
+                    self._apply_ocr_selection({hit_index} if hit_index is not None else set())
                     self.ocr_selection_rect = QRect()
                 else:
                     self._update_ocr_selection(self.ocr_selection_rect)
+                self.ocr_selection_base_indices.clear()
                 self.update()
                 event.accept()
             return
@@ -1365,7 +1392,7 @@ class ScreenshotEditor(QWidget):
                 return
             self._set_ocr_mode_ui(True)
             self.canvas.setFocus()
-            self.status.setText(f"OCR 模式：原图拖选单字或文字，Ctrl+C 复制，Esc 退出；未选择时复制全部（{len(entries)} 处）")
+            self.status.setText(f"OCR 模式：拖选文字，Ctrl 追加，Alt 取消，Ctrl+C 复制，Esc 退出（{len(entries)} 处）")
         else:
             QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
             self.status.setText("就绪")
