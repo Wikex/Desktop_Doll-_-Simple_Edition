@@ -48,6 +48,11 @@ class ScreenshotCanvas(QWidget):
     def __init__(self, pixmap, parent=None):
         super().__init__(parent)
         self.base_pixmap = pixmap
+        self.device_ratio = max(1.0, float(pixmap.devicePixelRatio()))
+        self.logical_size = QSize(
+            max(1, int(round(pixmap.width() / self.device_ratio))),
+            max(1, int(round(pixmap.height() / self.device_ratio))),
+        )
         self.annotations = []
         self.ocr_mode = False
         self.ocr_entries = []
@@ -70,8 +75,8 @@ class ScreenshotCanvas(QWidget):
         self._dragging_text_offset = QPoint()
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMouseTracking(True)
-        self.setMinimumSize(QSize(pixmap.width(), pixmap.height()))
-        self.setFixedSize(pixmap.size())
+        self.setMinimumSize(self.logical_size)
+        self.setFixedSize(self.logical_size)
 
     def set_tool(self, tool):
         self.current_tool = tool
@@ -331,15 +336,29 @@ class ScreenshotCanvas(QWidget):
 
         block = max(6, int(annotation.get("block", 12)))
         rendered = self.render_to_pixmap(include_current=False, before_annotation=annotation)
-        source = rendered.copy(rect)
-        small_w = max(1, rect.width() // block)
-        small_h = max(1, rect.height() // block)
+        physical_rect = self._logical_to_physical_rect(rect)
+        source = rendered.copy(physical_rect)
+        source.setDevicePixelRatio(self.device_ratio)
+        physical_block = max(1, int(round(block * self.device_ratio)))
+        small_w = max(1, physical_rect.width() // physical_block)
+        small_h = max(1, physical_rect.height() // physical_block)
         pixelated = source.scaled(small_w, small_h, Qt.IgnoreAspectRatio, Qt.FastTransformation)
-        pixelated = pixelated.scaled(rect.size(), Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        pixelated = pixelated.scaled(physical_rect.size(), Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        pixelated.setDevicePixelRatio(self.device_ratio)
         painter.drawPixmap(rect.topLeft(), pixelated)
+
+    def _logical_to_physical_rect(self, rect):
+        ratio = self.device_ratio
+        return QRect(
+            int(round(rect.x() * ratio)),
+            int(round(rect.y() * ratio)),
+            max(1, int(round(rect.width() * ratio))),
+            max(1, int(round(rect.height() * ratio))),
+        )
 
     def render_to_pixmap(self, include_current=True, before_annotation=None):
         output = QPixmap(self.base_pixmap.size())
+        output.setDevicePixelRatio(self.device_ratio)
         output.fill(Qt.transparent)
         painter = QPainter(output)
         painter.drawPixmap(0, 0, self.base_pixmap)
@@ -1153,11 +1172,12 @@ class ScreenshotEditor(QWidget):
             return pixmap
         if pixmap.width() <= target_rect.width() and pixmap.height() <= target_rect.height():
             return pixmap
-        return pixmap.scaled(
-            target_rect.size(),
-            Qt.IgnoreAspectRatio,
-            Qt.SmoothTransformation,
-        )
+        ratio_x = pixmap.width() / max(1, target_rect.width())
+        ratio_y = pixmap.height() / max(1, target_rect.height())
+        ratio = max(1.0, ratio_x, ratio_y)
+        display_pixmap = QPixmap(pixmap)
+        display_pixmap.setDevicePixelRatio(ratio)
+        return display_pixmap
 
     def _fit_to_capture(self, target_rect):
         self._resize_to_content()
@@ -1410,6 +1430,7 @@ class ScreenshotEditor(QWidget):
             return
 
         entries = []
+        ratio = max(1.0, self.canvas.device_ratio)
         for res in result:
             box = res.get("box", []) if isinstance(res, dict) else []
             text = str(res.get("text", "") if isinstance(res, dict) else "").strip()
@@ -1417,8 +1438,8 @@ class ScreenshotEditor(QWidget):
                 continue
             xs = [p[0] for p in box]
             ys = [p[1] for p in box]
-            x, y = min(xs), min(ys)
-            w, h = max(xs) - x, max(ys) - y
+            x, y = min(xs) / ratio, min(ys) / ratio
+            w, h = (max(xs) - min(xs)) / ratio, (max(ys) - min(ys)) / ratio
             if w < 2 or h < 2:
                 continue
             entries.append({"text": text, "x": x, "y": y, "w": w, "h": h, "cy": y + h / 2})
