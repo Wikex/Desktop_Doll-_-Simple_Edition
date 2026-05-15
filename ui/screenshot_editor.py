@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QDialog,
+    QPushButton
 )
 
 from core.ocr import OcrUnavailableError, recognize_qimage
@@ -40,6 +42,49 @@ TOOL_ICONS = {
     "text": "T",
 }
 
+class OcrResultDialog(QDialog):
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("OCR 识别结果")
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.WindowCloseButtonHint)
+        self.resize(500, 400)
+        self.setStyleSheet("QDialog { background-color: #f8fafc; }")
+        
+        layout = QVBoxLayout(self)
+        
+        self.text_edit = QTextEdit()
+        self.text_edit.setPlainText(text)
+        self.text_edit.setStyleSheet("QTextEdit { font-size: 14px; padding: 5px; background: white; border: 1px solid #cbd5e1; border-radius: 4px; color: #1e293b; }")
+        layout.addWidget(self.text_edit)
+        
+        btn_layout = QHBoxLayout()
+        
+        self.btn_copy = QPushButton("复制选中内容 (未选中则复制全部)")
+        self.btn_copy.setCursor(Qt.PointingHandCursor)
+        self.btn_copy.setStyleSheet("QPushButton { padding: 8px 16px; background: #3b82f6; color: white; border-radius: 4px; font-weight: bold; border: none; } QPushButton:hover { background: #2563eb; }")
+        self.btn_copy.clicked.connect(self._copy_text)
+        
+        self.btn_close = QPushButton("关闭")
+        self.btn_close.setCursor(Qt.PointingHandCursor)
+        self.btn_close.setStyleSheet("QPushButton { padding: 8px 16px; background: #e2e8f0; color: #334155; border-radius: 4px; font-weight: bold; border: none; } QPushButton:hover { background: #cbd5e1; }")
+        self.btn_close.clicked.connect(self.close)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_close)
+        btn_layout.addWidget(self.btn_copy)
+        
+        layout.addLayout(btn_layout)
+        
+    def _copy_text(self):
+        cursor = self.text_edit.textCursor()
+        if cursor.hasSelection():
+            selected_text = cursor.selectedText()
+            # QTextEdit uses U+2029 for paragraph separators in selectedText()
+            selected_text = selected_text.replace('\u2029', '\n')
+            QApplication.clipboard().setText(selected_text)
+        else:
+            QApplication.clipboard().setText(self.text_edit.toPlainText())
+        self.close()
 
 class ScreenshotCanvas(QWidget):
     changed = Signal()
@@ -1095,6 +1140,10 @@ class ScreenshotEditor(QWidget):
 
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
+        
+        self.status.setText("正在识别文字...")
+        QApplication.processEvents() # Force UI update
+        
         try:
             text = recognize_qimage(image)
         except OcrUnavailableError as exc:
@@ -1103,16 +1152,19 @@ class ScreenshotEditor(QWidget):
                 "OCR 不可用",
                 f"{exc}\n\n第一版已预留 OCR 入口；安装 OCR 组件后可直接使用。",
             )
+            self.status.setText("就绪")
             return
         except Exception as exc:
             log_exception(f"OCR failed: {exc}")
             QMessageBox.warning(self, "OCR 失败", str(exc))
+            self.status.setText("就绪")
             return
 
         if not text:
             QMessageBox.information(self, "识别结果", "没有识别到文字。")
+            self.status.setText("就绪")
             return
 
-        QApplication.clipboard().setText(text)
-        QMessageBox.information(self, "识别结果", text)
-        self.status.setText("OCR 结果已复制到剪贴板")
+        dialog = OcrResultDialog(text, self)
+        dialog.exec()
+        self.status.setText("OCR 识别完成")
