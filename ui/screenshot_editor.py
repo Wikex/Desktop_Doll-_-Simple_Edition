@@ -2,18 +2,16 @@ import os
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QPoint, QRect, QSize, Signal
-from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QFont, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QMessageBox,
-    QPushButton,
-    QSpinBox,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -54,6 +52,7 @@ class ScreenshotCanvas(QWidget):
         self.current_tool = "pen"
         self.current_color = QColor(239, 68, 68)
         self.current_width = 4
+        self.text_editor = None
         self.setMouseTracking(True)
         self.setMinimumSize(QSize(pixmap.width(), pixmap.height()))
         self.setFixedSize(pixmap.size())
@@ -94,6 +93,7 @@ class ScreenshotCanvas(QWidget):
             self.update()
 
     def _append_annotation(self, annotation):
+        self._finish_text_editor()
         self.annotations.append(annotation)
         self.redo_stack.clear()
         self.changed.emit()
@@ -133,7 +133,14 @@ class ScreenshotCanvas(QWidget):
             painter.drawLine(start, end)
             self._draw_arrow_head(painter, start, end, annotation.get("width", 4))
         elif typ == "text":
-            painter.drawText(annotation["pos"], annotation.get("text", ""))
+            font = QFont()
+            font.setPointSize(annotation.get("font_size", 16))
+            painter.setFont(font)
+            rect = annotation.get("rect")
+            if rect:
+                painter.drawText(rect, Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, annotation.get("text", ""))
+            else:
+                painter.drawText(annotation["pos"], annotation.get("text", ""))
         elif typ == "mosaic":
             self._draw_mosaic(painter, annotation)
 
@@ -197,17 +204,10 @@ class ScreenshotCanvas(QWidget):
 
         pos = event.pos()
         if self.current_tool == "text":
-            text, ok = QInputDialog.getText(self, "添加文字", "请输入标注文字：")
-            if ok and text:
-                self._append_annotation({
-                    "type": "text",
-                    "pos": pos,
-                    "text": text,
-                    "color": QColor(self.current_color),
-                    "width": self.current_width,
-                })
+            self._start_text_editor(pos)
             return
 
+        self._finish_text_editor()
         self.current_annotation = self._make_annotation(pos)
         self.update()
 
@@ -231,6 +231,110 @@ class ScreenshotCanvas(QWidget):
         self.current_annotation = None
         self._append_annotation(annotation)
 
+    def _start_text_editor(self, pos):
+        self._finish_text_editor()
+        editor = TextAnnotationEditor(QColor(self.current_color), self)
+        editor.finished.connect(self._commit_text_annotation)
+        x = min(max(0, pos.x()), max(0, self.width() - editor.width()))
+        y = min(max(0, pos.y()), max(0, self.height() - editor.height()))
+        editor.move(x, y)
+        editor.show()
+        editor.setFocusToText()
+        self.text_editor = editor
+
+    def _finish_text_editor(self):
+        if self.text_editor:
+            editor = self.text_editor
+            self.text_editor = None
+            editor.finish()
+
+    def _cancel_text_editor(self):
+        if self.text_editor:
+            editor = self.text_editor
+            self.text_editor = None
+            editor.cancel()
+
+    def _commit_text_annotation(self, annotation):
+        self.text_editor = None
+        if annotation.get("text"):
+            self.annotations.append(annotation)
+            self.redo_stack.clear()
+            self.changed.emit()
+            self.update()
+
+
+class InlineTextEdit(QTextEdit):
+    def keyPressEvent(self, event):
+        owner = self.parentWidget()
+        if event.key() == Qt.Key_Escape and owner:
+            owner.cancel()
+            event.accept()
+            return
+        if event.key() in {Qt.Key_Return, Qt.Key_Enter} and event.modifiers() & Qt.ControlModifier and owner:
+            owner.finish()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
+class TextAnnotationEditor(QWidget):
+    finished = Signal(dict)
+
+    def __init__(self, color, parent=None):
+        super().__init__(parent)
+        self.color = QColor(color)
+        self.setFixedSize(170, 72)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.edit = InlineTextEdit(self)
+        self.edit.setGeometry(9, 9, self.width() - 18, self.height() - 18)
+        self.edit.setAcceptRichText(False)
+        self.edit.setFontPointSize(16)
+        self.edit.setStyleSheet(
+            "QTextEdit {"
+            "background: rgba(255, 255, 255, 18);"
+            "border: 1px solid #f8fafc;"
+            "color: #111827;"
+            "padding: 2px;"
+            "}"
+        )
+
+    def setFocusToText(self):
+        self.edit.setFocus()
+
+    def finish(self):
+        text = self.edit.toPlainText().strip()
+        annotation = {
+            "type": "text",
+            "rect": QRect(self.pos() + QPoint(9, 9), self.edit.size()),
+            "text": text,
+            "color": QColor(self.color),
+            "width": 2,
+            "font_size": 16,
+        }
+        self.finished.emit(annotation)
+        self.close()
+
+    def cancel(self):
+        self.finished.emit({})
+        self.close()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(37, 99, 235), 2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(self.rect().adjusted(8, 8, -8, -8))
+        painter.setBrush(QColor(37, 99, 235))
+        for point in (
+            QPoint(self.width() // 2, 4),
+            QPoint(4, self.height() // 2),
+            QPoint(self.width() - 4, self.height() // 2),
+            QPoint(4, self.height() - 4),
+            QPoint(self.width() - 4, self.height() - 4),
+        ):
+            painter.drawEllipse(point, 5, 5)
+
 
 class ScreenshotEditor(QWidget):
     def __init__(self, pixmap, save_dir="", target_rect=None, parent=None):
@@ -251,11 +355,10 @@ class ScreenshotEditor(QWidget):
         self.toolbar_widget.setObjectName("screenshotToolbar")
         self.toolbar_widget.setStyleSheet(
             "#screenshotToolbar { background-color: #f8fafc; border: 1px solid #2563eb; } "
-            "QToolButton, QPushButton { background-color: transparent; color: #2f3337; border: 0; border-radius: 2px; padding: 0; font-size: 22px; } "
-            "QToolButton:hover, QPushButton:hover { background-color: #e5e7eb; } "
+            "QToolButton { background-color: transparent; color: #2f3337; border: 0; border-radius: 2px; padding: 0; font-size: 22px; } "
+            "QToolButton:hover { background-color: #e5e7eb; } "
             "QToolButton:checked { background-color: #dbeafe; color: #1d4ed8; } "
-            "QToolButton:disabled, QPushButton:disabled { color: #a3aab3; } "
-            "QSpinBox { background-color: transparent; color: #2f3337; border: 0; padding: 0 2px; font-size: 13px; } "
+            "QToolButton:disabled { color: #a3aab3; } "
             "QFrame { color: #c4c9d0; background-color: #c4c9d0; } "
             "QLabel { color: #4b5563; }"
         )
@@ -276,14 +379,6 @@ class ScreenshotEditor(QWidget):
         self.btn_color.setFixedSize(34, 32)
         self.btn_color.clicked.connect(self._choose_color)
         toolbar.addWidget(self.btn_color)
-
-        self.width_spin = QSpinBox()
-        self.width_spin.setRange(1, 24)
-        self.width_spin.setValue(4)
-        self.width_spin.setToolTip("粗细")
-        self.width_spin.setFixedSize(42, 32)
-        self.width_spin.valueChanged.connect(self.canvas_width_changed)
-        toolbar.addWidget(self.width_spin)
 
         self._add_toolbar_separator(toolbar)
 
@@ -333,7 +428,6 @@ class ScreenshotEditor(QWidget):
 
         self.canvas = ScreenshotCanvas(pixmap)
         self.canvas.changed.connect(self._refresh_undo_buttons)
-        self.width_spin.valueChanged.connect(self.canvas.set_width)
         layout.addWidget(self.canvas)
 
         self.status = QLabel("")
@@ -400,9 +494,6 @@ class ScreenshotEditor(QWidget):
         y = max(screen_geo.top(), min(y, screen_geo.bottom() - self.height() + 1))
         self.move(x, y)
 
-    def canvas_width_changed(self, value):
-        self.canvas.set_width(value)
-
     def _select_tool(self, tool):
         self.canvas.set_tool(tool)
         for name, btn in self.tool_buttons.items():
@@ -428,6 +519,7 @@ class ScreenshotEditor(QWidget):
         self.btn_redo.setEnabled(self.canvas.can_redo())
 
     def rendered_pixmap(self):
+        self.canvas._finish_text_editor()
         return self.canvas.render_to_pixmap()
 
     def copy_to_clipboard(self):
