@@ -876,11 +876,6 @@ class ScreenshotEditor(QWidget):
         self.btn_ocr.clicked.connect(self.run_ocr)
         toolbar.addWidget(self.btn_ocr)
 
-        self.btn_copy_ocr = self._make_tool_button("全", "复制全部文字")
-        self.btn_copy_ocr.clicked.connect(self.copy_all_ocr_text)
-        self.btn_copy_ocr.hide()
-        toolbar.addWidget(self.btn_copy_ocr)
-
         self._add_toolbar_separator(toolbar)
 
         self.btn_close = self._make_tool_button("×", "关闭")
@@ -1032,7 +1027,6 @@ class ScreenshotEditor(QWidget):
 
     def _clear_annotations(self):
         self.canvas.clear_annotations()
-        self.btn_copy_ocr.hide()
 
     def _refresh_undo_buttons(self):
         self.btn_undo.setEnabled(self.canvas.can_undo())
@@ -1109,12 +1103,6 @@ class ScreenshotEditor(QWidget):
             return
         super().keyPressEvent(event)
 
-    def copy_all_ocr_text(self):
-        texts = [label.text() for label in self.canvas.ocr_labels]
-        if texts:
-            QApplication.clipboard().setText("\n".join(texts))
-            self.status.setText("已复制全部文字到剪贴板")
-
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
         
@@ -1141,7 +1129,6 @@ class ScreenshotEditor(QWidget):
         if not result:
             QMessageBox.information(self, "识别结果", "没有识别到文字。")
             self.status.setText("就绪")
-            self.btn_copy_ocr.hide()
             return
 
         for res in result:
@@ -1167,5 +1154,4 @@ class ScreenshotEditor(QWidget):
             label.show()
             self.canvas.ocr_labels.append(label)
 
-        self.btn_copy_ocr.show()
         self.status.setText("OCR 识别完成，可直接在图片上选中文字复制")
