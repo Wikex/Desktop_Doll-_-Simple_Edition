@@ -598,6 +598,7 @@ class TextAnnotationEditor(QWidget):
         self._resize_handle = ""
         self._resize_start_pos = QPoint()
         self._resize_start_geo = QRect()
+        self._autosizing = False
         self.resize(120, 36)
         self.setMinimumSize(self.MIN_SIZE)
         self.setAttribute(Qt.WA_DeleteOnClose)
@@ -674,10 +675,24 @@ class TextAnnotationEditor(QWidget):
         self.edit.setGeometry(margin, margin, max(1, self.width() - margin * 2), max(1, self.height() - margin * 2))
 
     def resizeEvent(self, event):
-        self._sync_edit_geometry()
         super().resizeEvent(event)
+        self._sync_edit_geometry()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._sync_edit_geometry()
+        self._autosize_to_content()
 
     def _autosize_to_content(self):
+        if self._autosizing:
+            return
+        self._autosizing = True
+        try:
+            self._autosize_to_content_impl()
+        finally:
+            self._autosizing = False
+
+    def _autosize_to_content_impl(self):
         text = self.edit.toPlainText() or " "
         parent = self.parentWidget()
         document = self.edit.document()
@@ -690,6 +705,7 @@ class TextAnnotationEditor(QWidget):
                 height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
             if self.height() != height:
                 self.resize(self.width(), height)
+            self._sync_edit_geometry()
             self.update()
             return
 
@@ -706,6 +722,8 @@ class TextAnnotationEditor(QWidget):
             height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
         if self.size() != QSize(width, height):
             self.resize(width, height)
+        self._sync_edit_geometry()
+        self.update()
 
     def _handle_points(self):
         mid_x = self.width() // 2
