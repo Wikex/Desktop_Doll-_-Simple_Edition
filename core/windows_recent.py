@@ -2,6 +2,25 @@ import os
 import win32com.client
 import winreg
 from utils.logger import log_exception
+from utils.path_helper import get_base_dir
+
+def push_dummy_to_recent():
+    """
+    Pushes a dummy file to the Windows Recent Documents list.
+    This forces the currently top MRU item down to position 2.
+    If an item is at position 2, opening it again will force Windows to update its .lnk mtime.
+    """
+    try:
+        import ctypes
+        dummy_path = os.path.join(get_base_dir(), "cache_breaker.desktopdoll_dummy")
+        if not os.path.exists(dummy_path):
+            with open(dummy_path, "w") as f:
+                f.write("")
+        
+        # SHARD_PATHW = 3 (Unicode string path)
+        ctypes.windll.shell32.SHAddToRecentDocs(3, ctypes.c_wchar_p(dummy_path))
+    except Exception as e:
+        log_exception(f"Failed to push dummy to recent: {e}")
 
 def ensure_windows_recent_tracking_enabled():
     try:
@@ -77,6 +96,38 @@ def delete_recent_links_for_target(target_path):
             removed.append(lnk_path)
         except Exception as e:
             log_exception(f"Failed to remove Recent shortcut {lnk_path}: {e}")
+            
+    if removed:
+        try:
+            import ctypes
+            import tempfile
+            # Create a dummy file in temp dir to break the Windows MRU cache
+            fd, dummy_path = tempfile.mkstemp(prefix="dummy_recent_", suffix=".txt")
+            os.close(fd)
+            
+            # SHARD_PATHW = 2 (add absolute path as unicode string)
+            ctypes.windll.shell32.SHAddToRecentDocs(2, dummy_path)
+            
+            # Remove the dummy link directly to avoid recursion and clean up
+            dummy_key = os.path.normcase(os.path.abspath(dummy_path))
+            for lnk_path in list_recent_lnk_files():
+                target = resolve_lnk_target(lnk_path, shell=shell)
+                if target:
+                    try:
+                        t_key = os.path.normcase(os.path.abspath(target))
+                        if t_key == dummy_key:
+                            os.remove(lnk_path)
+                    except Exception:
+                        pass
+            
+            # Clean up dummy file
+            try:
+                os.remove(dummy_path)
+            except Exception:
+                pass
+        except Exception as e:
+            log_exception(f"Failed to break windows recent cache: {e}")
+
     return removed
 
 def is_directory_target(target_path):

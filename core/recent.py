@@ -57,10 +57,14 @@ class RecentScannerThread(QThread):
 
                 if updated_mtimes.get(lnk) == mtime:
                     continue
-                updated_mtimes[lnk] = mtime
 
                 target = resolve_lnk_target(lnk, shell=shell)
-                if not target or not os.path.exists(target):
+                if not target:
+                    continue
+                    
+                updated_mtimes[lnk] = mtime
+
+                if not os.path.exists(target):
                     continue
 
                 if is_directory_target(target):
@@ -68,6 +72,9 @@ class RecentScannerThread(QThread):
 
                 _, ext = os.path.splitext(target)
                 ext = self._normalize_ext(ext)
+
+                if ext == ".desktopdoll_dummy":
+                    continue
 
                 if self.excluded_extensions.get(ext, False):
                     continue
@@ -397,11 +404,14 @@ class RecentManager(QObject):
                 self._scan_debounce_timer.stop()
                 if hasattr(self, '_scanner') and self._scanner.isRunning():
                     self._drop_current_scan_results = True
-                removed_links = delete_recent_links_for_target(path)
-                for lnk_path in removed_links:
-                    self._last_scan_mtime.pop(lnk_path, None)
-                if removed_links:
-                    self._save_scan_state()
+                
+                # Do not delete the actual .lnk file because Windows won't easily recreate it if the user
+                # immediately opens the same file again. Instead, push a dummy file to the recent docs
+                # so the target file is pushed down the MRU list. Next time the user opens the target,
+                # Windows will move it back to #1 and update its .lnk mtime.
+                from core.windows_recent import push_dummy_to_recent
+                push_dummy_to_recent()
+                
                 self._save_history_now()
                 self.items_changed.emit(self.history)
                 break
