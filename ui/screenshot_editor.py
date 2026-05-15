@@ -891,6 +891,31 @@ class ScreenshotEditor(QWidget):
         self.status = QLabel("")
         self.status.setStyleSheet("background-color: #0f172a; color: #cbd5e1; padding: 3px 6px; border-radius: 4px;")
         layout.addWidget(self.status, 0, Qt.AlignLeft | Qt.AlignBottom)
+
+        self.ocr_panel = QWidget()
+        self.ocr_panel.setStyleSheet("background-color: #f8fafc; border: 1px solid #2563eb;")
+        ocr_layout = QVBoxLayout(self.ocr_panel)
+        ocr_layout.setContentsMargins(6, 6, 6, 6)
+        ocr_layout.setSpacing(4)
+        ocr_actions = QHBoxLayout()
+        self.btn_ocr_copy = QPushButton("复制全部")
+        self.btn_ocr_copy.clicked.connect(self._copy_ocr_text)
+        self.btn_ocr_close = QPushButton("关闭")
+        self.btn_ocr_close.clicked.connect(self._hide_ocr_panel)
+        ocr_actions.addWidget(self.btn_ocr_copy)
+        ocr_actions.addWidget(self.btn_ocr_close)
+        ocr_actions.addStretch()
+        self.ocr_text = QTextEdit()
+        self.ocr_text.setReadOnly(True)
+        self.ocr_text.setAcceptRichText(False)
+        self.ocr_text.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+        self.ocr_text.setMinimumHeight(86)
+        self.ocr_text.setMaximumHeight(150)
+        self.ocr_text.setStyleSheet("QTextEdit { background: white; color: #111827; border: 1px solid #cbd5e1; padding: 4px; }")
+        ocr_layout.addLayout(ocr_actions)
+        ocr_layout.addWidget(self.ocr_text)
+        self.ocr_panel.hide()
+        layout.addWidget(self.ocr_panel)
         self._select_tool("pen")
         self._refresh_color_button()
         self._refresh_undo_buttons()
@@ -935,12 +960,18 @@ class ScreenshotEditor(QWidget):
         )
 
     def _fit_to_capture(self, target_rect):
+        self._resize_to_content()
+        if target_rect:
+            self.place_at_capture(target_rect)
+
+    def _resize_to_content(self):
         self.adjustSize()
         width = max(self.canvas.width(), self.toolbar_widget.sizeHint().width())
         height = self.toolbar_widget.sizeHint().height() + self.canvas.height() + self.status.sizeHint().height()
+        if self.ocr_panel.isVisible():
+            width = max(width, self.ocr_panel.sizeHint().width())
+            height += self.ocr_panel.sizeHint().height()
         self.setFixedSize(width, height)
-        if target_rect:
-            self.place_at_capture(target_rect)
 
     def place_at_capture(self, target_rect):
         screen = QApplication.screenAt(target_rect.center()) or QApplication.primaryScreen()
@@ -1040,6 +1071,16 @@ class ScreenshotEditor(QWidget):
         QApplication.clipboard().setPixmap(self.rendered_pixmap())
         self.status.setText("已复制到剪贴板")
 
+    def _copy_ocr_text(self):
+        text = self.ocr_text.toPlainText().strip()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.status.setText("OCR 文字已复制")
+
+    def _hide_ocr_panel(self):
+        self.ocr_panel.hide()
+        self._resize_to_content()
+
     def _default_save_path(self):
         os.makedirs(self.save_dir, exist_ok=True)
         filename = datetime.now().strftime("Screenshot_%Y%m%d_%H%M%S.png")
@@ -1106,6 +1147,9 @@ class ScreenshotEditor(QWidget):
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
         
+        self.ocr_panel.hide()
+        self.ocr_text.clear()
+        self._resize_to_content()
         self.status.setText("正在识别文字...")
         QApplication.processEvents() # Force UI update
         
@@ -1131,7 +1175,7 @@ class ScreenshotEditor(QWidget):
             self.status.setText("就绪")
             return
 
-        created = 0
+        entries = []
         for res in result:
             box = res.get("box", []) if isinstance(res, dict) else []
             text = str(res.get("text", "") if isinstance(res, dict) else "").strip()
@@ -1143,25 +1187,36 @@ class ScreenshotEditor(QWidget):
             w, h = max(xs) - x, max(ys) - y
             if w < 2 or h < 2:
                 continue
-            
-            label = QLabel(self.canvas)
-            label.setText(text)
-            label.setGeometry(int(x), int(y), int(w), int(h))
-            label.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
-            label.setCursor(Qt.IBeamCursor)
-            
-            # Scale font to match height approximately
-            font = label.font()
-            font.setPixelSize(max(8, int(h * 0.8)))
-            label.setFont(font)
-            
-            label.setStyleSheet("QLabel { background-color: rgba(0, 120, 215, 60); color: transparent; selection-background-color: rgba(0, 120, 215, 150); selection-color: transparent; }")
-            label.show()
-            self.canvas.ocr_labels.append(label)
-            created += 1
+            entries.append({"text": text, "x": x, "y": y, "w": w, "h": h, "cy": y + h / 2})
 
-        if created:
-            self.status.setText(f"OCR 识别完成：{created} 处文字，可直接在图片上选中文字复制")
+        text = self._format_ocr_text(entries)
+        if text:
+            self.ocr_text.setPlainText(text)
+            self.ocr_panel.show()
+            self._resize_to_content()
+            self.status.setText(f"OCR 识别完成：{len(entries)} 处文字，可连续选择复制")
         else:
             QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
             self.status.setText("就绪")
+
+    def _format_ocr_text(self, entries):
+        if not entries:
+            return ""
+        ordered = sorted(entries, key=lambda item: (item["cy"], item["x"]))
+        lines = []
+        for item in ordered:
+            if not lines:
+                lines.append([item])
+                continue
+            current = lines[-1]
+            avg_h = sum(part["h"] for part in current) / max(1, len(current))
+            if abs(item["cy"] - current[0]["cy"]) <= max(8, avg_h * 0.65):
+                current.append(item)
+            else:
+                lines.append([item])
+
+        output = []
+        for line in lines:
+            line = sorted(line, key=lambda item: item["x"])
+            output.append(" ".join(item["text"] for item in line if item["text"]).strip())
+        return "\n".join(line for line in output if line).strip()
