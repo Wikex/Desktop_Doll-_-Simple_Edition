@@ -216,7 +216,10 @@ class ScreenshotCanvas(QWidget):
             return
 
         if self.current_annotation["type"] == "pen":
-            self.current_annotation["points"].append(event.pos())
+            if event.modifiers() & Qt.ShiftModifier:
+                self.current_annotation["points"] = [self.current_annotation["points"][0], event.pos()]
+            else:
+                self.current_annotation["points"].append(event.pos())
         else:
             self.current_annotation["end"] = event.pos()
         self.update()
@@ -225,7 +228,9 @@ class ScreenshotCanvas(QWidget):
         if event.button() != Qt.LeftButton or not self.current_annotation:
             return
 
-        if self.current_annotation["type"] != "pen":
+        if self.current_annotation["type"] == "pen" and event.modifiers() & Qt.ShiftModifier:
+            self.current_annotation["points"] = [self.current_annotation["points"][0], event.pos()]
+        elif self.current_annotation["type"] != "pen":
             self.current_annotation["end"] = event.pos()
         annotation = self.current_annotation
         self.current_annotation = None
@@ -336,6 +341,65 @@ class TextAnnotationEditor(QWidget):
             painter.drawEllipse(point, 5, 5)
 
 
+class ToolButton(QToolButton):
+    rightClicked = Signal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            self.rightClicked.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+
+class PenSizePopup(QWidget):
+    sizeChanged = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.value = 4
+        self.setFixedSize(104, 58)
+        self.setStyleSheet(
+            "PenSizePopup { background-color: #f8fafc; border: 1px solid #2563eb; } "
+            "QLabel { color: #111827; font-size: 12px; }"
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(2)
+        self.preview = QLabel()
+        self.preview.setFixedHeight(22)
+        self.preview.setAlignment(Qt.AlignCenter)
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.preview)
+        layout.addWidget(self.label)
+        self.set_size(self.value, emit=False)
+
+    def set_size(self, value, emit=True):
+        self.value = max(1, min(24, int(value)))
+        self.label.setText(f"{self.value}px  滚轮调整")
+        self.preview.setPixmap(self._preview_pixmap())
+        if emit:
+            self.sizeChanged.emit(self.value)
+
+    def _preview_pixmap(self):
+        pixmap = QPixmap(80, 22)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(239, 68, 68), self.value)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(8, 11, 72, 11)
+        painter.end()
+        return pixmap
+
+    def wheelEvent(self, event):
+        delta = 1 if event.angleDelta().y() > 0 else -1
+        self.set_size(self.value + delta)
+        event.accept()
+
+
 class ScreenshotEditor(QWidget):
     def __init__(self, pixmap, save_dir="", target_rect=None, parent=None):
         super().__init__(parent)
@@ -346,6 +410,7 @@ class ScreenshotEditor(QWidget):
         self.pinned_windows = []
         self._is_dragging = False
         self._drag_start_pos = QPoint()
+        self.pen_size_popup = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -370,6 +435,9 @@ class ScreenshotEditor(QWidget):
             btn = self._make_tool_button(TOOL_ICONS.get(tool, label), label)
             btn.setCheckable(True)
             btn.clicked.connect(lambda checked=False, t=tool: self._select_tool(t))
+            if tool == "pen":
+                btn.setToolTip("画笔\n按住 Shift 画直线\n右键调整大小")
+                btn.rightClicked.connect(self._toggle_pen_size_popup)
             toolbar.addWidget(btn)
             self.tool_buttons[tool] = btn
 
@@ -439,7 +507,7 @@ class ScreenshotEditor(QWidget):
         self._fit_to_capture(target_rect)
 
     def _make_tool_button(self, text, tooltip):
-        btn = QToolButton()
+        btn = ToolButton()
         btn.setText(text)
         btn.setToolTip(tooltip)
         btn.setFixedSize(34, 32)
@@ -498,6 +566,42 @@ class ScreenshotEditor(QWidget):
         self.canvas.set_tool(tool)
         for name, btn in self.tool_buttons.items():
             btn.setChecked(name == tool)
+        if tool != "pen":
+            self._hide_pen_size_popup()
+
+    def _toggle_pen_size_popup(self):
+        self._select_tool("pen")
+        if self.pen_size_popup and self.pen_size_popup.isVisible():
+            self.pen_size_popup.hide()
+            return
+        if not self.pen_size_popup:
+            self.pen_size_popup = PenSizePopup(self)
+            self.pen_size_popup.sizeChanged.connect(self._set_pen_size)
+        self.pen_size_popup.set_size(self.canvas.current_width, emit=False)
+        self._place_pen_size_popup()
+        self.pen_size_popup.show()
+        self.pen_size_popup.raise_()
+
+    def _place_pen_size_popup(self):
+        if not self.pen_size_popup:
+            return
+        btn = self.tool_buttons.get("pen")
+        if not btn:
+            return
+        pos = btn.mapTo(self, QPoint(0, btn.height() + 4))
+        if pos.y() + self.pen_size_popup.height() > self.height():
+            pos = btn.mapTo(self, QPoint(0, -self.pen_size_popup.height() - 4))
+        x = max(0, min(pos.x(), self.width() - self.pen_size_popup.width()))
+        y = max(0, min(pos.y(), self.height() - self.pen_size_popup.height()))
+        self.pen_size_popup.move(x, y)
+
+    def _hide_pen_size_popup(self):
+        if self.pen_size_popup:
+            self.pen_size_popup.hide()
+
+    def _set_pen_size(self, value):
+        self.canvas.set_width(value)
+        self.status.setText(f"画笔大小：{self.canvas.current_width}px")
 
     def _choose_color(self):
         color = QColorDialog.getColor(self.canvas.current_color, self, "选择标注颜色")
