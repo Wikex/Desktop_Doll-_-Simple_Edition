@@ -157,6 +157,20 @@ class HotkeyRow(QWidget):
 class SettingsDialog(QDialog):
     settings_saved = Signal(dict) # Emits updated options
 
+    def _create_search_icon(self):
+        from PySide6.QtGui import QPixmap, QPainter, QPen, QColor, QIcon
+        from PySide6.QtCore import Qt, QRectF
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor("#64748b"), 2)
+        painter.setPen(pen)
+        painter.drawEllipse(QRectF(2, 2, 6, 6))
+        painter.drawLine(7, 7, 13, 13)
+        painter.end()
+        return QIcon(pixmap)
+
     def __init__(self, options, hotkey_mgr, clipboard_mgr=None, recent_mgr=None, parent=None):
         super().__init__(parent)
         self.options = options
@@ -469,7 +483,10 @@ class SettingsDialog(QDialog):
         
         self.sys_search = QLineEdit()
         self.sys_search.setPlaceholderText("搜索系统功能...") # 搜索系统功能...
-        self.sys_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
+        self.sys_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; color: #0f172a;")
+        self.sys_search.setClearButtonEnabled(True)
+        search_icon = self._create_search_icon()
+        self.sys_search.addAction(search_icon, QLineEdit.LeadingPosition)
         self.sys_search.textChanged.connect(self._filter_sys_features)
         
         from PySide6.QtWidgets import QScrollArea
@@ -518,7 +535,9 @@ class SettingsDialog(QDialog):
         
         self.custom_search = QLineEdit()
         self.custom_search.setPlaceholderText("搜索自定义软件...") # 搜索自定义软件...
-        self.custom_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white;")
+        self.custom_search.setStyleSheet("padding: 5px; border: 1px solid #cbd5e1; border-radius: 4px; background: white; color: #0f172a;")
+        self.custom_search.setClearButtonEnabled(True)
+        self.custom_search.addAction(search_icon, QLineEdit.LeadingPosition)
         self.custom_search.textChanged.connect(self._filter_custom_features)
         
         custom_scroll = QScrollArea()
