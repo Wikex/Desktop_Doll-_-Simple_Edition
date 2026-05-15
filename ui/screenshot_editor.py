@@ -294,6 +294,7 @@ class ScreenshotCanvas(QWidget):
             editor.set_text(text)
         if annotation and annotation.get("rect"):
             editor.resize(annotation["rect"].size())
+            editor.set_manual_size(bool(annotation.get("manual_size", False)))
         x = min(max(0, pos.x()), max(0, self.width() - editor.width()))
         y = min(max(0, pos.y()), max(0, self.height() - editor.height()))
         editor.move(x, y)
@@ -375,11 +376,17 @@ class TextAnnotationEditor(QWidget):
     MIN_SIZE = QSize(34, 28)
     MAX_SIZE = QSize(900, 500)
     MARGIN = 6
+    HANDLE_SIZE = 8
 
     def __init__(self, color, font_size, parent=None):
         super().__init__(parent)
         self.color = QColor(color)
         self.font_size = max(8, min(72, int(font_size)))
+        self.manual_size = False
+        self._resizing = False
+        self._resize_handle = ""
+        self._resize_start_pos = QPoint()
+        self._resize_start_geo = QRect()
         self.resize(120, 36)
         self.setMinimumSize(self.MIN_SIZE)
         self.setAttribute(Qt.WA_DeleteOnClose)
@@ -409,6 +416,12 @@ class TextAnnotationEditor(QWidget):
         self.edit.setPlainText(text)
         self._autosize_to_content()
 
+    def set_manual_size(self, enabled):
+        self.manual_size = bool(enabled)
+        self.edit.setLineWrapMode(QTextEdit.WidgetWidth if self.manual_size else QTextEdit.NoWrap)
+        if not self.manual_size:
+            self._autosize_to_content()
+
     def set_font_size(self, size):
         self.font_size = max(8, min(72, int(size)))
         self.edit.selectAll()
@@ -427,6 +440,7 @@ class TextAnnotationEditor(QWidget):
             "color": QColor(self.color),
             "width": 2,
             "font_size": self.font_size,
+            "manual_size": self.manual_size,
         }
         self.finished.emit(annotation)
         self.close()
@@ -444,6 +458,10 @@ class TextAnnotationEditor(QWidget):
         super().resizeEvent(event)
 
     def _autosize_to_content(self):
+        if self.manual_size:
+            self.update()
+            return
+
         text = self.edit.toPlainText() or " "
         metrics = QFontMetrics(self.edit.font())
         lines = text.splitlines() or [text]
@@ -465,6 +483,100 @@ class TextAnnotationEditor(QWidget):
         if self.size() != QSize(width, height):
             self.resize(width, height)
 
+    def _handle_points(self):
+        mid_x = self.width() // 2
+        mid_y = self.height() // 2
+        return {
+            "top_left": QPoint(1, 1),
+            "top": QPoint(mid_x, 1),
+            "top_right": QPoint(self.width() - 2, 1),
+            "right": QPoint(self.width() - 2, mid_y),
+            "bottom_right": QPoint(self.width() - 2, self.height() - 2),
+            "bottom": QPoint(mid_x, self.height() - 2),
+            "bottom_left": QPoint(1, self.height() - 2),
+            "left": QPoint(1, mid_y),
+        }
+
+    def _handle_at(self, pos):
+        half = self.HANDLE_SIZE
+        for name, point in self._handle_points().items():
+            rect = QRect(point.x() - half, point.y() - half, half * 2, half * 2)
+            if rect.contains(pos):
+                return name
+        return ""
+
+    def _bounded_geometry(self, geo):
+        bounded = QRect(geo)
+        bounded.setWidth(max(self.MIN_SIZE.width(), min(self.MAX_SIZE.width(), bounded.width())))
+        bounded.setHeight(max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), bounded.height())))
+
+        parent = self.parentWidget()
+        if parent:
+            parent_rect = parent.rect()
+            if bounded.left() < parent_rect.left():
+                bounded.moveLeft(parent_rect.left())
+            if bounded.top() < parent_rect.top():
+                bounded.moveTop(parent_rect.top())
+            if bounded.right() > parent_rect.right():
+                bounded.setRight(parent_rect.right())
+            if bounded.bottom() > parent_rect.bottom():
+                bounded.setBottom(parent_rect.bottom())
+            bounded.setWidth(max(self.MIN_SIZE.width(), bounded.width()))
+            bounded.setHeight(max(self.MIN_SIZE.height(), bounded.height()))
+        return bounded
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            handle = self._handle_at(event.pos())
+            if handle:
+                self._resizing = True
+                self._resize_handle = handle
+                self._resize_start_pos = event.globalPos()
+                self._resize_start_geo = QRect(self.geometry())
+                self.set_manual_size(True)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._resizing:
+            delta = event.globalPos() - self._resize_start_pos
+            geo = QRect(self._resize_start_geo)
+
+            if "left" in self._resize_handle:
+                geo.setLeft(min(geo.left() + delta.x(), geo.right() - self.MIN_SIZE.width() + 1))
+            if "right" in self._resize_handle:
+                geo.setRight(max(geo.right() + delta.x(), geo.left() + self.MIN_SIZE.width() - 1))
+            if "top" in self._resize_handle:
+                geo.setTop(min(geo.top() + delta.y(), geo.bottom() - self.MIN_SIZE.height() + 1))
+            if "bottom" in self._resize_handle:
+                geo.setBottom(max(geo.bottom() + delta.y(), geo.top() + self.MIN_SIZE.height() - 1))
+
+            self.setGeometry(self._bounded_geometry(geo))
+            event.accept()
+            return
+
+        handle = self._handle_at(event.pos())
+        if handle in {"left", "right"}:
+            self.setCursor(Qt.SizeHorCursor)
+        elif handle in {"top", "bottom"}:
+            self.setCursor(Qt.SizeVerCursor)
+        elif handle in {"top_left", "bottom_right"}:
+            self.setCursor(Qt.SizeFDiagCursor)
+        elif handle in {"top_right", "bottom_left"}:
+            self.setCursor(Qt.SizeBDiagCursor)
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._resizing:
+            self._resizing = False
+            self._resize_handle = ""
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
@@ -472,6 +584,15 @@ class TextAnnotationEditor(QWidget):
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(37, 99, 235, 210))
+        for point in self._handle_points().values():
+            painter.drawRect(
+                point.x() - self.HANDLE_SIZE // 2,
+                point.y() - self.HANDLE_SIZE // 2,
+                self.HANDLE_SIZE,
+                self.HANDLE_SIZE,
+            )
 
 
 class ToolButton(QToolButton):
