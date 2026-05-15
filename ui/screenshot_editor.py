@@ -53,6 +53,7 @@ class ScreenshotCanvas(QWidget):
         self.current_tool = "pen"
         self.current_color = QColor(239, 68, 68)
         self.current_width = 4
+        self.current_text_size = 16
         self.text_editor = None
         self.setMouseTracking(True)
         self.setMinimumSize(QSize(pixmap.width(), pixmap.height()))
@@ -67,6 +68,11 @@ class ScreenshotCanvas(QWidget):
 
     def set_width(self, width):
         self.current_width = max(1, int(width))
+
+    def set_text_size(self, size):
+        self.current_text_size = max(8, min(72, int(size)))
+        if self.text_editor:
+            self.text_editor.set_font_size(self.current_text_size)
 
     def can_undo(self):
         return bool(self.annotations)
@@ -139,7 +145,10 @@ class ScreenshotCanvas(QWidget):
             painter.setFont(font)
             rect = annotation.get("rect")
             if rect:
+                painter.save()
+                painter.setClipRect(rect)
                 painter.drawText(rect, Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, annotation.get("text", ""))
+                painter.restore()
             else:
                 painter.drawText(annotation["pos"], annotation.get("text", ""))
         elif typ == "mosaic":
@@ -239,7 +248,7 @@ class ScreenshotCanvas(QWidget):
 
     def _start_text_editor(self, pos):
         self._finish_text_editor()
-        editor = TextAnnotationEditor(QColor(self.current_color), self)
+        editor = TextAnnotationEditor(QColor(self.current_color), self.current_text_size, self)
         editor.finished.connect(self._commit_text_annotation)
         x = min(max(0, pos.x()), max(0, self.width() - editor.width()))
         y = min(max(0, pos.y()), max(0, self.height() - editor.height()))
@@ -286,15 +295,26 @@ class InlineTextEdit(QTextEdit):
 class TextAnnotationEditor(QWidget):
     finished = Signal(dict)
 
-    def __init__(self, color, parent=None):
+    HANDLE_SIZE = 10
+    MIN_SIZE = QSize(80, 42)
+
+    def __init__(self, color, font_size, parent=None):
         super().__init__(parent)
         self.color = QColor(color)
-        self.setFixedSize(170, 72)
+        self.font_size = max(8, min(72, int(font_size)))
+        self._resizing = False
+        self._resize_anchor = ""
+        self._resize_start_pos = QPoint()
+        self._resize_start_geo = QRect()
+        self.resize(170, 72)
+        self.setMinimumSize(self.MIN_SIZE)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.edit = InlineTextEdit(self)
-        self.edit.setGeometry(9, 9, self.width() - 18, self.height() - 18)
         self.edit.setAcceptRichText(False)
-        self.edit.setFontPointSize(16)
+        self.edit.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.edit.setFontPointSize(self.font_size)
         self.edit.setStyleSheet(
             "QTextEdit {"
             "background: rgba(255, 255, 255, 18);"
@@ -303,9 +323,18 @@ class TextAnnotationEditor(QWidget):
             "padding: 2px;"
             "}"
         )
+        self._sync_edit_geometry()
 
     def setFocusToText(self):
         self.edit.setFocus()
+
+    def set_font_size(self, size):
+        self.font_size = max(8, min(72, int(size)))
+        self.edit.selectAll()
+        self.edit.setFontPointSize(self.font_size)
+        cursor = self.edit.textCursor()
+        cursor.clearSelection()
+        self.edit.setTextCursor(cursor)
 
     def finish(self):
         text = self.edit.toPlainText().strip()
@@ -315,7 +344,7 @@ class TextAnnotationEditor(QWidget):
             "text": text,
             "color": QColor(self.color),
             "width": 2,
-            "font_size": 16,
+            "font_size": self.font_size,
         }
         self.finished.emit(annotation)
         self.close()
@@ -323,6 +352,87 @@ class TextAnnotationEditor(QWidget):
     def cancel(self):
         self.finished.emit({})
         self.close()
+
+    def _sync_edit_geometry(self):
+        margin = 9
+        self.edit.setGeometry(margin, margin, max(1, self.width() - margin * 2), max(1, self.height() - margin * 2))
+
+    def resizeEvent(self, event):
+        self._sync_edit_geometry()
+        super().resizeEvent(event)
+
+    def _handle_at(self, pos):
+        handles = {
+            "top": QPoint(self.width() // 2, 4),
+            "left": QPoint(4, self.height() // 2),
+            "right": QPoint(self.width() - 4, self.height() // 2),
+            "bottom_left": QPoint(4, self.height() - 4),
+            "bottom_right": QPoint(self.width() - 4, self.height() - 4),
+        }
+        for name, point in handles.items():
+            if QRect(point.x() - self.HANDLE_SIZE, point.y() - self.HANDLE_SIZE, self.HANDLE_SIZE * 2, self.HANDLE_SIZE * 2).contains(pos):
+                return name
+        return ""
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            handle = self._handle_at(event.pos())
+            if handle:
+                self._resizing = True
+                self._resize_anchor = handle
+                self._resize_start_pos = event.globalPos()
+                self._resize_start_geo = self.geometry()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._resizing:
+            delta = event.globalPos() - self._resize_start_pos
+            geo = QRect(self._resize_start_geo)
+            if "right" in self._resize_anchor:
+                geo.setWidth(max(self.MIN_SIZE.width(), geo.width() + delta.x()))
+            if "left" in self._resize_anchor:
+                new_left = geo.left() + delta.x()
+                max_left = geo.right() - self.MIN_SIZE.width() + 1
+                geo.setLeft(min(new_left, max_left))
+            if "bottom" in self._resize_anchor:
+                geo.setHeight(max(self.MIN_SIZE.height(), geo.height() + delta.y()))
+            if self._resize_anchor == "top":
+                new_top = geo.top() + delta.y()
+                max_top = geo.bottom() - self.MIN_SIZE.height() + 1
+                geo.setTop(min(new_top, max_top))
+
+            parent_rect = self.parentWidget().rect() if self.parentWidget() else QRect()
+            if parent_rect.isValid():
+                geo.setLeft(max(parent_rect.left(), geo.left()))
+                geo.setTop(max(parent_rect.top(), geo.top()))
+                if geo.right() > parent_rect.right():
+                    geo.setRight(parent_rect.right())
+                if geo.bottom() > parent_rect.bottom():
+                    geo.setBottom(parent_rect.bottom())
+            self.setGeometry(geo)
+            event.accept()
+            return
+
+        handle = self._handle_at(event.pos())
+        if handle in {"left", "right"}:
+            self.setCursor(Qt.SizeHorCursor)
+        elif handle == "top":
+            self.setCursor(Qt.SizeVerCursor)
+        elif handle:
+            self.setCursor(Qt.SizeFDiagCursor)
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._resizing:
+            self._resizing = False
+            self._resize_anchor = ""
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -416,6 +526,51 @@ class PenSizeMenu(QMenu):
         event.accept()
 
 
+class TextSizeMenu(QMenu):
+    sizeChanged = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.value = 16
+        self.setStyleSheet(
+            "QMenu { background-color: #f8fafc; border: 1px solid #2563eb; padding: 5px; } "
+            "QMenu::item { color: #111827; padding: 5px 24px 5px 8px; border-radius: 2px; } "
+            "QMenu::item:selected { background-color: #dbeafe; } "
+            "QLabel { color: #111827; font-size: 12px; }"
+        )
+        panel = QWidget(self)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(8, 6, 8, 6)
+        self.label = QLabel()
+        self.label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.label)
+        from PySide6.QtWidgets import QWidgetAction
+        header_action = QWidgetAction(self)
+        header_action.setDefaultWidget(panel)
+        self.addAction(header_action)
+        self.addSeparator()
+        self.size_actions = {}
+        for size in (12, 14, 16, 18, 20, 24, 28, 32, 40, 48):
+            action = self.addAction(f"{size}px")
+            action.triggered.connect(lambda checked=False, value=size: self.set_size(value))
+            self.size_actions[size] = action
+        self.set_size(self.value, emit=False)
+
+    def set_size(self, value, emit=True):
+        self.value = max(8, min(72, int(value)))
+        self.label.setText(f"文字 {self.value}px  滚轮调整")
+        for size, action in self.size_actions.items():
+            prefix = "✓ " if size == self.value else "  "
+            action.setText(f"{prefix}{size}px")
+        if emit:
+            self.sizeChanged.emit(self.value)
+
+    def wheelEvent(self, event):
+        delta = 1 if event.angleDelta().y() > 0 else -1
+        self.set_size(self.value + delta)
+        event.accept()
+
+
 class ScreenshotEditor(QWidget):
     def __init__(self, pixmap, save_dir="", target_rect=None, parent=None):
         super().__init__(parent)
@@ -427,6 +582,7 @@ class ScreenshotEditor(QWidget):
         self._is_dragging = False
         self._drag_start_pos = QPoint()
         self.pen_size_menu = None
+        self.text_size_menu = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -454,6 +610,9 @@ class ScreenshotEditor(QWidget):
             if tool == "pen":
                 btn.setToolTip("画笔\n按住 Shift 画直线\n右键调整大小")
                 btn.rightClicked.connect(self._show_pen_size_menu)
+            elif tool == "text":
+                btn.setToolTip("文字\n右键调整字号")
+                btn.rightClicked.connect(self._show_text_size_menu)
             toolbar.addWidget(btn)
             self.tool_buttons[tool] = btn
 
@@ -584,6 +743,8 @@ class ScreenshotEditor(QWidget):
             btn.setChecked(name == tool)
         if tool != "pen":
             self._hide_pen_size_menu()
+        if tool != "text":
+            self._hide_text_size_menu()
 
     def _show_pen_size_menu(self):
         self._select_tool("pen")
@@ -610,6 +771,32 @@ class ScreenshotEditor(QWidget):
     def _set_pen_size(self, value):
         self.canvas.set_width(value)
         self.status.setText(f"画笔大小：{self.canvas.current_width}px")
+
+    def _show_text_size_menu(self):
+        self._select_tool("text")
+        if not self.text_size_menu:
+            self.text_size_menu = TextSizeMenu(self)
+            self.text_size_menu.sizeChanged.connect(self._set_text_size)
+        self.text_size_menu.set_size(self.canvas.current_text_size, emit=False)
+        btn = self.tool_buttons.get("text")
+        if not btn:
+            return
+        below = btn.mapToGlobal(QPoint(0, btn.height()))
+        above = btn.mapToGlobal(QPoint(0, -self.text_size_menu.sizeHint().height()))
+        screen = QApplication.screenAt(below) or QApplication.primaryScreen()
+        screen_geo = screen.availableGeometry()
+        pos = below
+        if below.y() + self.text_size_menu.sizeHint().height() > screen_geo.bottom():
+            pos = above
+        self.text_size_menu.popup(pos)
+
+    def _hide_text_size_menu(self):
+        if self.text_size_menu:
+            self.text_size_menu.hide()
+
+    def _set_text_size(self, value):
+        self.canvas.set_text_size(value)
+        self.status.setText(f"文字大小：{self.canvas.current_text_size}px")
 
     def _choose_color(self):
         color = QColorDialog.getColor(self.canvas.current_color, self, "选择标注颜色")
