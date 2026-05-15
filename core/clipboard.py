@@ -442,6 +442,14 @@ class ClipboardManager(QObject):
         for item in list(self.history):
             if self._item_key(item) == key:
                 self.history.remove(item)
+                
+                # Clear deduplication caches so it can be recorded again immediately
+                if item.get("type") == "image":
+                    self.last_image_hash = None
+                else:
+                    self.last_normalized_text = None
+                    self.last_text_at = 0.0
+                    
                 break
                 
         self._save_history()
@@ -471,16 +479,21 @@ class ClipboardManager(QObject):
     def clear_history(self, clear_type="all"):
         if clear_type == "all":
             self.history = [item for item in self.history if item.get("pinned", False)]
+            self.last_normalized_text = None
+            self.last_image_hash = None
         elif clear_type == "text":
             self.history = [
                 item for item in self.history
                 if item.get("pinned", False) or item.get("type") != "text"
             ]
+            self.last_normalized_text = None
+            self.last_text_at = 0.0
         elif clear_type == "image":
             self.history = [
                 item for item in self.history
                 if item.get("pinned", False) or item.get("type") != "image"
             ]
+            self.last_image_hash = None
             
         self._save_history()
         self.history_changed.emit(self.history)
