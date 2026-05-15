@@ -275,6 +275,7 @@ class ScreenshotCanvas(QWidget):
             pen.setCapStyle(Qt.RoundCap)
             pen.setJoinStyle(Qt.RoundJoin)
             painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
 
         if typ == "pen":
             points = annotation.get("points", [])
