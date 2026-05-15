@@ -229,16 +229,17 @@ class ScreenshotCanvas(QWidget):
             return
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing, False)
-        normal_fill = QColor(37, 99, 235, 45)
-        normal_border = QColor(37, 99, 235, 180)
-        selected_fill = QColor(245, 158, 11, 70)
-        selected_border = QColor(245, 158, 11, 230)
+        normal_fill = QColor(37, 99, 235, 25)  # Very faint fill, so original text is readable
+        normal_border = QColor(37, 99, 235, 0) # Transparent border to avoid cluttering small text
+        selected_fill = QColor(37, 99, 235, 120) # Clear blue fill for selected text
+        selected_border = QColor(37, 99, 235, 0) # Transparent border
         for index, entry in enumerate(self.ocr_entries):
             rect = entry["rect"]
             selected = index in self.ocr_selected_indices
             painter.fillRect(rect, selected_fill if selected else normal_fill)
-            painter.setPen(QPen(selected_border if selected else normal_border, 1))
-            painter.drawRect(rect.adjusted(0, 0, -1, -1))
+            if selected_border.alpha() > 0 or normal_border.alpha() > 0:
+                painter.setPen(QPen(selected_border if selected else normal_border, 1))
+                painter.drawRect(rect.adjusted(0, 0, -1, -1))
         if self.ocr_selecting and not self.ocr_selection_rect.isNull():
             painter.setBrush(QColor(37, 99, 235, 35))
             pen = QPen(QColor(37, 99, 235, 230), 1)
