@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QPoint, QRect, QSize, Signal
-from PySide6.QtGui import QColor, QFont, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -55,6 +55,10 @@ class ScreenshotCanvas(QWidget):
         self.current_width = 4
         self.current_text_size = 16
         self.text_editor = None
+        self._editing_text_index = None
+        self._editing_original_text = None
+        self._dragging_text_index = None
+        self._dragging_text_offset = QPoint()
         self.setMouseTracking(True)
         self.setMinimumSize(QSize(pixmap.width(), pixmap.height()))
         self.setFixedSize(pixmap.size())
@@ -145,10 +149,7 @@ class ScreenshotCanvas(QWidget):
             painter.setFont(font)
             rect = annotation.get("rect")
             if rect:
-                painter.save()
-                painter.setClipRect(rect)
                 painter.drawText(rect, Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop, annotation.get("text", ""))
-                painter.restore()
             else:
                 painter.drawText(annotation["pos"], annotation.get("text", ""))
         elif typ == "mosaic":
@@ -213,15 +214,32 @@ class ScreenshotCanvas(QWidget):
             return
 
         pos = event.pos()
+        self._finish_text_editor()
+        text_index = self._hit_text_annotation(pos)
+        if text_index is not None:
+            self._dragging_text_index = text_index
+            self._dragging_text_offset = pos - self.annotations[text_index]["rect"].topLeft()
+            event.accept()
+            return
+
         if self.current_tool == "text":
             self._start_text_editor(pos)
             return
 
-        self._finish_text_editor()
         self.current_annotation = self._make_annotation(pos)
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self._dragging_text_index is not None and event.buttons() & Qt.LeftButton:
+            rect = QRect(self.annotations[self._dragging_text_index]["rect"])
+            rect.moveTopLeft(event.pos() - self._dragging_text_offset)
+            rect = self._clamp_rect_to_canvas(rect)
+            self.annotations[self._dragging_text_index]["rect"] = rect
+            self.changed.emit()
+            self.update()
+            event.accept()
+            return
+
         if not self.current_annotation or not (event.buttons() & Qt.LeftButton):
             return
 
@@ -235,6 +253,11 @@ class ScreenshotCanvas(QWidget):
         self.update()
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self._dragging_text_index is not None:
+            self._dragging_text_index = None
+            event.accept()
+            return
+
         if event.button() != Qt.LeftButton or not self.current_annotation:
             return
 
@@ -246,10 +269,31 @@ class ScreenshotCanvas(QWidget):
         self.current_annotation = None
         self._append_annotation(annotation)
 
-    def _start_text_editor(self, pos):
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            text_index = self._hit_text_annotation(event.pos())
+            if text_index is not None:
+                annotation = self.annotations.pop(text_index)
+                self._start_text_editor(annotation["rect"].topLeft(), annotation=annotation, edit_index=text_index)
+                self.changed.emit()
+                self.update()
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
+
+    def _start_text_editor(self, pos, annotation=None, edit_index=None):
         self._finish_text_editor()
-        editor = TextAnnotationEditor(QColor(self.current_color), self.current_text_size, self)
+        color = QColor(annotation.get("color", self.current_color)) if annotation else QColor(self.current_color)
+        font_size = int(annotation.get("font_size", self.current_text_size)) if annotation else self.current_text_size
+        text = annotation.get("text", "") if annotation else ""
+        editor = TextAnnotationEditor(color, font_size, self)
         editor.finished.connect(self._commit_text_annotation)
+        self._editing_text_index = edit_index
+        self._editing_original_text = annotation
+        if text:
+            editor.set_text(text)
+        if annotation and annotation.get("rect"):
+            editor.resize(annotation["rect"].size())
         x = min(max(0, pos.x()), max(0, self.width() - editor.width()))
         y = min(max(0, pos.y()), max(0, self.height() - editor.height()))
         editor.move(x, y)
@@ -270,12 +314,45 @@ class ScreenshotCanvas(QWidget):
             editor.cancel()
 
     def _commit_text_annotation(self, annotation):
+        original = self._editing_original_text
+        index = self._editing_text_index
+        self._editing_original_text = None
+        self._editing_text_index = None
         self.text_editor = None
         if annotation.get("text"):
-            self.annotations.append(annotation)
+            if index is None or index > len(self.annotations):
+                self.annotations.append(annotation)
+            else:
+                self.annotations.insert(index, annotation)
             self.redo_stack.clear()
             self.changed.emit()
             self.update()
+        elif original:
+            if index is None or index > len(self.annotations):
+                self.annotations.append(original)
+            else:
+                self.annotations.insert(index, original)
+            self.changed.emit()
+            self.update()
+
+    def _hit_text_annotation(self, pos):
+        for index in range(len(self.annotations) - 1, -1, -1):
+            annotation = self.annotations[index]
+            if annotation.get("type") == "text" and annotation.get("rect") and annotation["rect"].contains(pos):
+                return index
+        return None
+
+    def _clamp_rect_to_canvas(self, rect):
+        clamped = QRect(rect)
+        if clamped.left() < 0:
+            clamped.moveLeft(0)
+        if clamped.top() < 0:
+            clamped.moveTop(0)
+        if clamped.right() > self.width() - 1:
+            clamped.moveRight(self.width() - 1)
+        if clamped.bottom() > self.height() - 1:
+            clamped.moveBottom(self.height() - 1)
+        return clamped
 
 
 class InlineTextEdit(QTextEdit):
@@ -295,18 +372,15 @@ class InlineTextEdit(QTextEdit):
 class TextAnnotationEditor(QWidget):
     finished = Signal(dict)
 
-    HANDLE_SIZE = 10
-    MIN_SIZE = QSize(80, 42)
+    MIN_SIZE = QSize(34, 28)
+    MAX_SIZE = QSize(900, 500)
+    MARGIN = 6
 
     def __init__(self, color, font_size, parent=None):
         super().__init__(parent)
         self.color = QColor(color)
         self.font_size = max(8, min(72, int(font_size)))
-        self._resizing = False
-        self._resize_anchor = ""
-        self._resize_start_pos = QPoint()
-        self._resize_start_geo = QRect()
-        self.resize(170, 72)
+        self.resize(120, 36)
         self.setMinimumSize(self.MIN_SIZE)
         self.setAttribute(Qt.WA_DeleteOnClose)
         self.edit = InlineTextEdit(self)
@@ -317,16 +391,23 @@ class TextAnnotationEditor(QWidget):
         self.edit.setFontPointSize(self.font_size)
         self.edit.setStyleSheet(
             "QTextEdit {"
-            "background: rgba(255, 255, 255, 18);"
-            "border: 1px solid #f8fafc;"
-            "color: #111827;"
-            "padding: 2px;"
+            "background: rgba(255, 255, 255, 20);"
+            "border: 1px solid rgba(37, 99, 235, 150);"
+            f"color: {self.color.name()};"
+            "padding: 0;"
             "}"
         )
+        self.edit.textChanged.connect(self._autosize_to_content)
+        self.edit.document().documentLayout().documentSizeChanged.connect(lambda size: self._autosize_to_content())
         self._sync_edit_geometry()
+        self._autosize_to_content()
 
     def setFocusToText(self):
         self.edit.setFocus()
+
+    def set_text(self, text):
+        self.edit.setPlainText(text)
+        self._autosize_to_content()
 
     def set_font_size(self, size):
         self.font_size = max(8, min(72, int(size)))
@@ -335,12 +416,13 @@ class TextAnnotationEditor(QWidget):
         cursor = self.edit.textCursor()
         cursor.clearSelection()
         self.edit.setTextCursor(cursor)
+        self._autosize_to_content()
 
     def finish(self):
         text = self.edit.toPlainText().strip()
         annotation = {
             "type": "text",
-            "rect": QRect(self.pos() + QPoint(9, 9), self.edit.size()),
+            "rect": QRect(self.pos() + QPoint(self.MARGIN, self.MARGIN), self.edit.size()),
             "text": text,
             "color": QColor(self.color),
             "width": 2,
@@ -354,102 +436,42 @@ class TextAnnotationEditor(QWidget):
         self.close()
 
     def _sync_edit_geometry(self):
-        margin = 9
+        margin = self.MARGIN
         self.edit.setGeometry(margin, margin, max(1, self.width() - margin * 2), max(1, self.height() - margin * 2))
 
     def resizeEvent(self, event):
         self._sync_edit_geometry()
         super().resizeEvent(event)
 
-    def _handle_at(self, pos):
-        handles = {
-            "top": QPoint(self.width() // 2, 4),
-            "left": QPoint(4, self.height() // 2),
-            "right": QPoint(self.width() - 4, self.height() // 2),
-            "bottom_left": QPoint(4, self.height() - 4),
-            "bottom_right": QPoint(self.width() - 4, self.height() - 4),
-        }
-        for name, point in handles.items():
-            if QRect(point.x() - self.HANDLE_SIZE, point.y() - self.HANDLE_SIZE, self.HANDLE_SIZE * 2, self.HANDLE_SIZE * 2).contains(pos):
-                return name
-        return ""
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            handle = self._handle_at(event.pos())
-            if handle:
-                self._resizing = True
-                self._resize_anchor = handle
-                self._resize_start_pos = event.globalPos()
-                self._resize_start_geo = self.geometry()
-                event.accept()
-                return
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._resizing:
-            delta = event.globalPos() - self._resize_start_pos
-            geo = QRect(self._resize_start_geo)
-            if "right" in self._resize_anchor:
-                geo.setWidth(max(self.MIN_SIZE.width(), geo.width() + delta.x()))
-            if "left" in self._resize_anchor:
-                new_left = geo.left() + delta.x()
-                max_left = geo.right() - self.MIN_SIZE.width() + 1
-                geo.setLeft(min(new_left, max_left))
-            if "bottom" in self._resize_anchor:
-                geo.setHeight(max(self.MIN_SIZE.height(), geo.height() + delta.y()))
-            if self._resize_anchor == "top":
-                new_top = geo.top() + delta.y()
-                max_top = geo.bottom() - self.MIN_SIZE.height() + 1
-                geo.setTop(min(new_top, max_top))
-
-            parent_rect = self.parentWidget().rect() if self.parentWidget() else QRect()
-            if parent_rect.isValid():
-                geo.setLeft(max(parent_rect.left(), geo.left()))
-                geo.setTop(max(parent_rect.top(), geo.top()))
-                if geo.right() > parent_rect.right():
-                    geo.setRight(parent_rect.right())
-                if geo.bottom() > parent_rect.bottom():
-                    geo.setBottom(parent_rect.bottom())
-            self.setGeometry(geo)
-            event.accept()
-            return
-
-        handle = self._handle_at(event.pos())
-        if handle in {"left", "right"}:
-            self.setCursor(Qt.SizeHorCursor)
-        elif handle == "top":
-            self.setCursor(Qt.SizeVerCursor)
-        elif handle:
-            self.setCursor(Qt.SizeFDiagCursor)
-        else:
-            self.unsetCursor()
-        super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self._resizing:
-            self._resizing = False
-            self._resize_anchor = ""
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
+    def _autosize_to_content(self):
+        text = self.edit.toPlainText() or " "
+        metrics = QFontMetrics(self.edit.font())
+        lines = text.splitlines() or [text]
+        desired_text_width = max(metrics.horizontalAdvance(line or " ") for line in lines) + 12
+        max_width = self.MAX_SIZE.width()
+        parent = self.parentWidget()
+        if parent:
+            max_width = min(max_width, max(self.MIN_SIZE.width(), parent.width() - self.x()))
+        content_width = max(self.MIN_SIZE.width() - self.MARGIN * 2, min(max_width - self.MARGIN * 2, desired_text_width))
+        wrapped = metrics.boundingRect(
+            QRect(0, 0, max(1, content_width), 10000),
+            Qt.TextWordWrap | Qt.AlignLeft | Qt.AlignTop,
+            text,
+        )
+        width = max(self.MIN_SIZE.width(), min(max_width, content_width + self.MARGIN * 2))
+        height = max(self.MIN_SIZE.height(), min(self.MAX_SIZE.height(), wrapped.height() + 14 + self.MARGIN * 2))
+        if parent:
+            height = min(height, max(self.MIN_SIZE.height(), parent.height() - self.y()))
+        if self.size() != QSize(width, height):
+            self.resize(width, height)
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        pen = QPen(QColor(37, 99, 235), 2)
+        pen = QPen(QColor(37, 99, 235, 120), 1)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        painter.drawRect(self.rect().adjusted(8, 8, -8, -8))
-        painter.setBrush(QColor(37, 99, 235))
-        for point in (
-            QPoint(self.width() // 2, 4),
-            QPoint(4, self.height() // 2),
-            QPoint(self.width() - 4, self.height() // 2),
-            QPoint(4, self.height() - 4),
-            QPoint(self.width() - 4, self.height() - 4),
-        ):
-            painter.drawEllipse(point, 5, 5)
+        painter.drawRect(self.rect().adjusted(1, 1, -2, -2))
 
 
 class ToolButton(QToolButton):
