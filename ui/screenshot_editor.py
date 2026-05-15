@@ -378,7 +378,8 @@ class InlineTextEdit(QTextEdit):
 class TextAnnotationEditor(QWidget):
     finished = Signal(dict)
 
-    MIN_SIZE = QSize(34, 28)
+    MIN_CONTENT_WIDTH = 20
+    MIN_SIZE = QSize(MIN_CONTENT_WIDTH + 12, 28)
     MAX_SIZE = QSize(900, 500)
     MARGIN = 6
     HANDLE_SIZE = 8
@@ -558,6 +559,15 @@ class TextAnnotationEditor(QWidget):
                 event.accept()
                 return
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            handle = self._handle_at(event.pos())
+            if handle and handle != "delete":
+                self.set_manual_size(False)
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._resizing:
