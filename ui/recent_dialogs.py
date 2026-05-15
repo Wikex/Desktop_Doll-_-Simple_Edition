@@ -114,7 +114,7 @@ class ExcludedExtensionsDialog(QDialog):
             self.list_widget.setItemWidget(item, row_widget)
 
     def get_excluded_extensions(self):
-        return self.excluded
+        return [ext for ext, checked in self.excluded.items() if checked]
 
 
 class ExtensionFilterDialog(QDialog):
