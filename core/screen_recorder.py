@@ -87,14 +87,30 @@ class ScreenRecorderThread(QThread):
                 
             sct = mss.mss()
             frame_time = 1.0 / fps
+            last_valid_img = None
             
             while self._running:
                 start_time = time.time()
                 
-                sct_img = sct.grab(monitor)
-                img = np.array(sct_img)
-                # Convert BGRA to BGR
-                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                try:
+                    sct_img = sct.grab(monitor)
+                    img = np.array(sct_img)
+                    # Convert BGRA to BGR
+                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+                    last_valid_img = img
+                except mss.exception.ScreenShotError:
+                    # BitBlt fails when an administrator window (like Everything) is in the foreground due to UIPI
+                    if last_valid_img is not None:
+                        img = last_valid_img
+                    else:
+                        img = np.zeros((height, width, 3), dtype=np.uint8)
+                except Exception as e:
+                    log_exception(f"Frame grab failed: {e}")
+                    if last_valid_img is not None:
+                        img = last_valid_img
+                    else:
+                        img = np.zeros((height, width, 3), dtype=np.uint8)
+                        
                 out.write(img)
                 
                 elapsed = time.time() - start_time
