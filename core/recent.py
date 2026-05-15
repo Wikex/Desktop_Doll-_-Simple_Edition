@@ -3,6 +3,7 @@ import json
 import time
 from PySide6.QtCore import QObject, Signal, QTimer, QThread, QFileSystemWatcher
 from core.windows_recent import (
+    delete_recent_links_for_target,
     get_recent_dir,
     list_recent_lnk_files,
     resolve_lnk_target,
@@ -393,7 +394,15 @@ class RecentManager(QObject):
         for i, item in enumerate(self.history):
             if self._path_key(item.get("path")) == key:
                 self.history.pop(i)
-                self._save_history()
+                self._scan_debounce_timer.stop()
+                if hasattr(self, '_scanner') and self._scanner.isRunning():
+                    self._drop_current_scan_results = True
+                removed_links = delete_recent_links_for_target(path)
+                for lnk_path in removed_links:
+                    self._last_scan_mtime.pop(lnk_path, None)
+                if removed_links:
+                    self._save_scan_state()
+                self._save_history_now()
                 self.items_changed.emit(self.history)
                 break
 

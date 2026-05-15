@@ -46,5 +46,38 @@ def resolve_lnk_target(lnk_path, shell=None):
         log_exception(f"Failed to resolve shortcut target: {e}")
         return None
 
+def delete_recent_links_for_target(target_path):
+    if not target_path:
+        return []
+
+    try:
+        target_key = os.path.normcase(os.path.abspath(target_path))
+    except Exception:
+        target_key = os.path.normcase(str(target_path))
+
+    removed = []
+    shell = None
+    try:
+        shell = win32com.client.Dispatch("WScript.Shell")
+    except Exception as e:
+        log_exception(f"Failed to initialize shell for Recent cleanup: {e}")
+
+    for lnk_path in list_recent_lnk_files():
+        target = resolve_lnk_target(lnk_path, shell=shell)
+        if not target:
+            continue
+        try:
+            current_key = os.path.normcase(os.path.abspath(target))
+        except Exception:
+            current_key = os.path.normcase(str(target))
+        if current_key != target_key:
+            continue
+        try:
+            os.remove(lnk_path)
+            removed.append(lnk_path)
+        except Exception as e:
+            log_exception(f"Failed to remove Recent shortcut {lnk_path}: {e}")
+    return removed
+
 def is_directory_target(target_path):
     return os.path.isdir(target_path)
