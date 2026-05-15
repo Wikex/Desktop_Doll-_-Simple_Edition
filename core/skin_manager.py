@@ -38,7 +38,6 @@ DEFAULT_SKIN_CONFIG = {
         "border_color": [255, 255, 255, 80],
         "colors": {
             "clipboard": [245, 158, 11, 230],
-            "screenshot": [34, 197, 94, 230],
             "notebook": [59, 130, 246, 230],
             "smart_screenshot": [239, 68, 68, 230],
             "advanced_screenshot": [124, 58, 237, 230],

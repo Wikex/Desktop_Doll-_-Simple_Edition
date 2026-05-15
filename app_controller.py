@@ -27,7 +27,6 @@ from PySide6.QtCore import Qt
 
 from actions.clipboard_actions import first_url, open_image_location
 from actions.record_actions import is_record_rect_valid, record_rect_error_message
-from actions.screenshot_actions import release_modifier_keys
 from ui.floating_ball import FloatingBall
 from ui.sub_ball import SubBall
 from ui.panel import Panel
@@ -49,7 +48,6 @@ from core.skin_manager import SkinManager
 from ui.recent_panel import RecentPanel
 import sys
 import math
-import keyboard 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
@@ -102,9 +100,6 @@ class FloatingAssistant:
         self.clipboard_ball = SubBall(self.ball, text="📋", radius=80, angle=0, tooltip="\u526a\u8d34\u677f\u5386\u53f2", bg_color=self._sub_ball_color("clipboard", QColor(255, 165, 0, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.clipboard_ball)
 
-        self.screenshot_ball = SubBall(self.ball, text="✂️", radius=80, angle=0, tooltip="\u7cfb\u7edf\u622a\u56fe", bg_color=self._sub_ball_color("screenshot", QColor(50, 200, 50, 230)), skin_config=self.skin_config)
-        self.sub_balls.append(self.screenshot_ball)
-
         self.notebook_ball = SubBall(self.ball, text="📝", radius=80, angle=0, tooltip="\u8bb0\u4e8b\u672c", bg_color=self._sub_ball_color("notebook", QColor(50, 150, 250, 230)), skin_config=self.skin_config)
         self.sub_balls.append(self.notebook_ball)
 
@@ -146,10 +141,6 @@ class FloatingAssistant:
         self.recording_border = None
         self.screenshot_editors = []
         self._screenshot_hidden_state = None
-        self._system_screenshot_restore_armed = False
-        self._system_screenshot_restore_timer = QTimer()
-        self._system_screenshot_restore_timer.setSingleShot(True)
-        self._system_screenshot_restore_timer.timeout.connect(self._finish_system_screenshot_hide)
         self.video_save_path = self.options.get("video_save_path", "")
         import os
         if self.video_save_path and not os.path.exists(self.video_save_path):
@@ -181,7 +172,6 @@ class FloatingAssistant:
         # Connections - Sub Ball
         self.clipboard_ball.clicked.connect(self.on_clipboard_ball_clicked)
         self.clipboard_ball.position_changed.connect(self.on_clipboard_ball_moved)
-        self.screenshot_ball.clicked.connect(self.on_screenshot_ball_clicked)
         self.record_ball.clicked.connect(self.on_record_ball_clicked)
         self.smart_screenshot_ball.clicked.connect(self.on_smart_screenshot_clicked)
         self.advanced_screenshot_ball.clicked.connect(self.on_advanced_screenshot_clicked)
@@ -331,9 +321,6 @@ class FloatingAssistant:
             if self.options.get("enable_clipboard_ball", True):
                 self.clipboard_ball.update_position_from_main()
                 self.clipboard_ball.show()
-            if self.options.get("enable_screenshot_ball", True):
-                self.screenshot_ball.update_position_from_main()
-                self.screenshot_ball.show()
             if self.options.get("enable_notebook_ball", True):
                 self.notebook_ball.update_position_from_main()
                 self.notebook_ball.show()
@@ -405,11 +392,6 @@ class FloatingAssistant:
 
     def on_notebook_ball_moved(self, x, y):
         pass
-
-    def on_screenshot_ball_clicked(self):
-        self._trigger_system_screenshot()
-
-    
 
     def on_recent_ball_clicked(self):
         self.recent_mgr.tick_scan()
@@ -716,45 +698,6 @@ class FloatingAssistant:
         self.options["recent_extension_visibility"] = visibility_dict
         save_option("recent_extension_visibility", visibility_dict)
 
-    def _trigger_system_screenshot(self):
-        # 释放所有可能的修饰键（避免组合键冲突，如 win+shift+s 触发失败）
-        self._hide_balls_for_screenshot()
-        if self.options.get("hide_ball_when_screenshot", True):
-            self._arm_system_screenshot_restore()
-        release_modifier_keys(keyboard)
-        QTimer.singleShot(80, self._send_system_screenshot_hotkey)
-
-    def _send_system_screenshot_hotkey(self):
-        try:
-            keyboard.send("win+shift+s")
-        except Exception as e:
-            log_exception(f"Failed to trigger system screenshot: {e}")
-            self._finish_system_screenshot_hide()
-
-    def _arm_system_screenshot_restore(self):
-        if self._system_screenshot_restore_armed:
-            return
-        self._system_screenshot_restore_armed = True
-        try:
-            QApplication.clipboard().dataChanged.connect(self._on_system_screenshot_clipboard_changed)
-        except (TypeError, RuntimeError) as e:
-            log_exception(f"Failed to watch clipboard for screenshot restore: {e}")
-        self._system_screenshot_restore_timer.start(45000)
-
-    def _on_system_screenshot_clipboard_changed(self):
-        QTimer.singleShot(250, self._finish_system_screenshot_hide)
-
-    def _finish_system_screenshot_hide(self):
-        if not self._system_screenshot_restore_armed:
-            return
-        self._system_screenshot_restore_armed = False
-        self._system_screenshot_restore_timer.stop()
-        try:
-            QApplication.clipboard().dataChanged.disconnect(self._on_system_screenshot_clipboard_changed)
-        except (TypeError, RuntimeError):
-            pass
-        self._restore_balls_after_screenshot()
-
     def toggle_main_ball(self):
         if self.ball.isVisible():
             self.ball.hide()
@@ -868,12 +811,6 @@ class FloatingAssistant:
                 self.clipboard_ball.hide()
                 self.panel.hide()
                 
-            if self.options.get("enable_screenshot_ball", True):
-                self.screenshot_ball.reset_position()
-                self.screenshot_ball.show()
-            else:
-                self.screenshot_ball.hide()
-                
             if self.options.get("enable_notebook_ball", True):
                 self.notebook_ball.reset_position()
                 self.notebook_ball.show()
@@ -918,8 +855,6 @@ class FloatingAssistant:
             from PySide6.QtGui import QCursor
             cursor_pos = QCursor.pos()
             self.panel.toggle_visibility(cursor_pos.x(), cursor_pos.y())
-        elif action_name == "screenshot":
-            self.on_screenshot_ball_clicked()
         elif action_name == "smart_screenshot":
             self.on_smart_screenshot_clicked(background_image=payload_img, pre_captured_rects=payload_rects)
         elif action_name == "advanced_screenshot":

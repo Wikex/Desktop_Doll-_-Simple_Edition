@@ -429,7 +429,6 @@ class SettingsDialog(QDialog):
         hk_layout = QVBoxLayout(hk_content)
         hk_layout.setSpacing(3)
         
-        self.screenshot_row = HotkeyRow("screenshot", "系统截屏:", self.current_hotkeys.get("screenshot", "")) # 系统截屏:
         self.smart_screenshot_row = HotkeyRow("smart_screenshot", "智能截屏:", self.current_hotkeys.get("smart_screenshot", "")) # 智能截屏:
         self.advanced_screenshot_row = HotkeyRow("advanced_screenshot", "进阶截图:", self.current_hotkeys.get("advanced_screenshot", ""))
         self.record_row = HotkeyRow("record", "智能录屏:", self.current_hotkeys.get("record", "")) # 智能录屏:
@@ -440,7 +439,7 @@ class SettingsDialog(QDialog):
         self.locate_ball_row = HotkeyRow("locate_ball", "显示它在哪:", self.current_hotkeys.get("locate_ball", ""))
         self.toggle_panels_row = HotkeyRow("toggle_panels", "显示/隐藏所有面板:", self.current_hotkeys.get("toggle_panels", ""))
         
-        for row in [self.screenshot_row, self.smart_screenshot_row, self.advanced_screenshot_row, self.record_row,
+        for row in [self.smart_screenshot_row, self.advanced_screenshot_row, self.record_row,
                     self.notebook_row, self.clipboard_row, self.recent_row,
                     self.toggle_ball_row, self.locate_ball_row, self.toggle_panels_row]:
             row.text_changed.connect(self.on_hotkey_changed)
@@ -485,7 +484,6 @@ class SettingsDialog(QDialog):
         
         self.features_map = [
             ("enable_clipboard_ball", "剪贴板历史 (📋)"),
-            ("enable_screenshot_ball", "系统截屏 (✂️)"),
             ("enable_notebook_ball", "记事本 (📝)"),
             ("enable_smart_screenshot_ball", "智能截屏 (🎯)"),
             ("enable_advanced_screenshot_ball", "进阶截图 (✏️)"),
@@ -872,7 +870,6 @@ class SettingsDialog(QDialog):
                 QMessageBox.warning(self, "\u5feb\u6377\u952e\u51b2\u7a81", f"\u65e0\u6cd5\u6ce8\u518c\u5feb\u6377\u952e: {new_text}\n\u53ef\u80fd\u88ab\u5176\u4ed6\u7a0b\u5e8f\u5360\u7528\u3002")
                 # Revert UI
                 row_map = {
-                    "screenshot": self.screenshot_row,
                     "smart_screenshot": self.smart_screenshot_row,
                     "advanced_screenshot": self.advanced_screenshot_row,
                     "record": self.record_row,
@@ -883,11 +880,11 @@ class SettingsDialog(QDialog):
                     "locate_ball": self.locate_ball_row,
                     "toggle_panels": self.toggle_panels_row
                 }
-                row_map[name].set_hotkey(self.current_hotkeys.get(name, ""))
+                if name in row_map:
+                    row_map[name].set_hotkey(self.current_hotkeys.get(name, ""))
 
     def _restore_hotkey_defaults(self):
         row_map = {
-            "screenshot": self.screenshot_row,
             "smart_screenshot": self.smart_screenshot_row,
             "advanced_screenshot": self.advanced_screenshot_row,
             "record": self.record_row,

@@ -8,7 +8,6 @@ CONFIG_FILE = os.path.join(get_base_dir(), "config.json")
 
 HotkeyKey = Literal[
     "clipboard",
-    "screenshot",
     "smart_screenshot",
     "advanced_screenshot",
     "notebook",
@@ -29,7 +28,6 @@ OptionKey = Literal[
     "clipboard_content_type",
     "browser_path",
     "enable_clipboard_ball",
-    "enable_screenshot_ball",
     "enable_notebook_ball",
     "enable_smart_screenshot_ball",
     "enable_advanced_screenshot_ball",
@@ -52,7 +50,6 @@ class AppConfig(TypedDict):
 
 DEFAULT_HOTKEYS = {
     "clipboard": "ctrl+shift+v",
-    "screenshot": "win+shift+s",
     "smart_screenshot": "ctrl+shift+s",
     "advanced_screenshot": "ctrl+shift+a",
     "notebook": "ctrl+shift+n",
@@ -73,7 +70,6 @@ DEFAULT_OPTIONS = {
     "clipboard_content_type": "both",
     "browser_path": "msedge",
     "enable_clipboard_ball": True,
-    "enable_screenshot_ball": True,
     "enable_notebook_ball": True,
     "enable_smart_screenshot_ball": True,
     "enable_advanced_screenshot_ball": True,
@@ -103,6 +99,9 @@ def load_config():
                 k: loaded_hotkeys.get(k, v)
                 for k, v in DEFAULT_HOTKEYS.items()
             }
+            legacy_screenshot = str(loaded_hotkeys.get("screenshot", "") or "").strip()
+            if legacy_screenshot and legacy_screenshot.lower() != "win+shift+s" and not loaded_hotkeys.get("advanced_screenshot"):
+                hotkeys["advanced_screenshot"] = legacy_screenshot
 
             loaded_options = config.get("options", {})
             options = {
