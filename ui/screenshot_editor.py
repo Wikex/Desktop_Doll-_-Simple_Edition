@@ -1131,13 +1131,18 @@ class ScreenshotEditor(QWidget):
             self.status.setText("就绪")
             return
 
+        created = 0
         for res in result:
-            box = res[0]
-            text = res[1]
+            box = res.get("box", []) if isinstance(res, dict) else []
+            text = str(res.get("text", "") if isinstance(res, dict) else "").strip()
+            if not box or not text:
+                continue
             xs = [p[0] for p in box]
             ys = [p[1] for p in box]
             x, y = min(xs), min(ys)
             w, h = max(xs) - x, max(ys) - y
+            if w < 2 or h < 2:
+                continue
             
             label = QLabel(self.canvas)
             label.setText(text)
@@ -1153,5 +1158,10 @@ class ScreenshotEditor(QWidget):
             label.setStyleSheet("QLabel { background-color: rgba(0, 120, 215, 60); color: transparent; selection-background-color: rgba(0, 120, 215, 150); selection-color: transparent; }")
             label.show()
             self.canvas.ocr_labels.append(label)
+            created += 1
 
-        self.status.setText("OCR 识别完成，可直接在图片上选中文字复制")
+        if created:
+            self.status.setText(f"OCR 识别完成：{created} 处文字，可直接在图片上选中文字复制")
+        else:
+            QMessageBox.information(self, "识别结果", "没有识别到可用文字。")
+            self.status.setText("就绪")
