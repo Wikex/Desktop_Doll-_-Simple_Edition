@@ -13,6 +13,7 @@ from utils.path_helper import get_base_dir
 from utils.logger import log_exception
 
 HISTORY_FILE = os.path.join(get_base_dir(), "recent_history.json")
+SCAN_STATE_FILE = os.path.join(get_base_dir(), "recent_scan_state.json")
 
 class RecentScannerThread(QThread):
     scan_finished = Signal(list, dict) # new_items, updated_mtimes
@@ -106,8 +107,9 @@ class RecentManager(QObject):
         ensure_windows_recent_tracking_enabled()
         
         self.history = self._load_history()
-        self._last_scan_mtime = {} # path -> mtime
+        self._last_scan_mtime = self._load_scan_state() # lnk path -> mtime
         self._rescan_requested = False
+        self._drop_current_scan_results = False
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
@@ -174,6 +176,23 @@ class RecentManager(QObject):
             log_exception(f"Failed to load recent history: {e}")
             return []
 
+    def _load_scan_state(self):
+        if not os.path.exists(SCAN_STATE_FILE):
+            return {}
+        try:
+            with open(SCAN_STATE_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if not isinstance(raw, dict):
+                return {}
+            return {
+                str(path): float(mtime)
+                for path, mtime in raw.items()
+                if isinstance(path, str)
+            }
+        except Exception as e:
+            log_exception(f"Failed to load recent scan state: {e}")
+            return {}
+
     def _normalize_history(self, raw_history):
         if not isinstance(raw_history, list):
             return []
@@ -239,12 +258,34 @@ class RecentManager(QObject):
     def _save_history(self):
         self._save_timer.start()
 
+    def _save_history_now(self):
+        self._save_timer.stop()
+        self._do_save_history()
+
     def _do_save_history(self):
         try:
             with open(HISTORY_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.history, f, ensure_ascii=False, indent=4)
         except Exception as e:
             log_exception(f"Failed to save recent history: {e}")
+
+    def _save_scan_state(self):
+        try:
+            with open(SCAN_STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(self._last_scan_mtime, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            log_exception(f"Failed to save recent scan state: {e}")
+
+    def _mark_current_recent_links_seen(self):
+        try:
+            for lnk in list_recent_lnk_files():
+                try:
+                    self._last_scan_mtime[lnk] = os.path.getmtime(lnk)
+                except Exception:
+                    continue
+            self._save_scan_state()
+        except Exception as e:
+            log_exception(f"Failed to mark current recent links seen: {e}")
 
     def _watch_recent_dir(self):
         if not self.tracking_enabled:
@@ -279,11 +320,16 @@ class RecentManager(QObject):
         self._scanner.start()
 
     def _on_scan_finished(self, new_items, updated_mtimes, silent):
-        self._last_scan_mtime = updated_mtimes
+        self._last_scan_mtime.update(updated_mtimes)
+        self._save_scan_state()
 
         if self._rescan_requested and self.tracking_enabled:
             self._rescan_requested = False
             QTimer.singleShot(0, self.tick_scan)
+
+        if self._drop_current_scan_results:
+            self._drop_current_scan_results = False
+            return
         
         if silent:
             return
@@ -332,9 +378,13 @@ class RecentManager(QObject):
             self.items_changed.emit(self.history)
 
     def clear_history(self):
+        self._scan_debounce_timer.stop()
+        if hasattr(self, '_scanner') and self._scanner.isRunning():
+            self._drop_current_scan_results = True
+        self._mark_current_recent_links_seen()
         if self.history:
             self.history = [item for item in self.history if item.get("pinned", False)]
-            self._save_history()
+            self._save_history_now()
             self.items_changed.emit(self.history)
 
     def remove_item(self, item_to_remove):

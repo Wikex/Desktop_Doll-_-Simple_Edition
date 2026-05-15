@@ -7,6 +7,7 @@ build/
 !桌面人偶.spec
 history.json
 recent_history.json
+recent_scan_state.json
 config.json
 notebook.json
 test_*.py
