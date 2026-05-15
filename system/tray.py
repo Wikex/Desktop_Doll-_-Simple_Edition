@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt, QObject, Signal
 
 class TrayIcon(QObject):
     quit_requested = Signal()
+    restart_requested = Signal()
     toggle_requested = Signal()
     locate_requested = Signal()
     toggle_panels_requested = Signal()
@@ -88,6 +89,10 @@ class TrayIcon(QObject):
         self.action_about = QAction("\u5173\u4e8e\u684c\u9762\u4eba\u5076", self) # 关于桌面人偶
         self.action_about.triggered.connect(self.about_requested.emit)
         self.menu.addAction(self.action_about)
+
+        self.action_restart = QAction("重新启动桌面人偶", self)
+        self.action_restart.triggered.connect(self.restart_requested.emit)
+        self.menu.addAction(self.action_restart)
         
         self.action_quit = QAction("\u9000\u51fa\u684c\u9762\u4eba\u5076", self) # 退出桌面人偶
         self.action_quit.triggered.connect(self.quit_requested.emit)

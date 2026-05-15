@@ -1,6 +1,40 @@
 import sys
+import os
+import time
 
 from app_controller import FloatingAssistant
+
+
+SINGLE_INSTANCE_MUTEX = None
+RESTART_WAIT_ENV = "DESKTOP_DOLL_RESTART_WAIT_PID"
+
+
+def wait_for_restart_parent():
+    parent_pid = os.environ.pop(RESTART_WAIT_ENV, "")
+    if not parent_pid:
+        return
+    try:
+        pid = int(parent_pid)
+    except ValueError:
+        return
+    if pid <= 0 or pid == os.getpid():
+        return
+
+    try:
+        import ctypes
+
+        synchronize = 0x00100000
+        handle = ctypes.windll.kernel32.OpenProcess(synchronize, False, pid)
+        if handle:
+            try:
+                ctypes.windll.kernel32.WaitForSingleObject(handle, 15000)
+            finally:
+                ctypes.windll.kernel32.CloseHandle(handle)
+            return
+    except Exception:
+        pass
+
+    time.sleep(1.5)
 
 
 def ensure_single_instance():
@@ -18,6 +52,7 @@ def ensure_single_instance():
 
 
 if __name__ == "__main__":
-    ensure_single_instance()
+    wait_for_restart_parent()
+    SINGLE_INSTANCE_MUTEX = ensure_single_instance()
     assistant = FloatingAssistant()
     sys.exit(assistant.run())

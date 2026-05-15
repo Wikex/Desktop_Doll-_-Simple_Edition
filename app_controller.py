@@ -1,6 +1,7 @@
 import sys
 import os
 import ctypes
+import subprocess
 from utils.path_helper import get_base_dir
 from PIL import ImageGrab
 
@@ -184,6 +185,7 @@ class FloatingAssistant:
 
         # Connections - System
         self.tray.quit_requested.connect(self.quit_app)
+        self.tray.restart_requested.connect(self.restart_app)
         self.tray.about_requested.connect(self.show_about)
         self.tray.toggle_requested.connect(self.toggle_main_ball)
         self.tray.locate_requested.connect(self.show_ball_locator)
@@ -887,6 +889,33 @@ class FloatingAssistant:
     def quit_app(self):
         self.tray.hide()
         self.app.quit()
+
+    def restart_app(self):
+        env = os.environ.copy()
+        env["DESKTOP_DOLL_RESTART_WAIT_PID"] = str(os.getpid())
+        try:
+            if getattr(sys, "frozen", False):
+                command = [sys.executable]
+            else:
+                script = os.path.abspath(sys.argv[0])
+                command = [sys.executable, script, *sys.argv[1:]]
+
+            creation_flags = 0
+            if os.name == "nt":
+                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            subprocess.Popen(
+                command,
+                cwd=get_base_dir(),
+                env=env,
+                close_fds=True,
+                creationflags=creation_flags,
+            )
+            self.quit_app()
+        except Exception as exc:
+            log_exception(f"Restart failed: {exc}")
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(self.ball, "重新启动失败", str(exc))
 
     def run(self):
         return self.app.exec()
