@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QPoint, QRect, QSize, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QPolygonF
+from PySide6.QtGui import QColor, QImage, QKeySequence, QPainter, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
@@ -226,6 +226,7 @@ class ScreenshotCanvas(QWidget):
 class ScreenshotEditor(QWidget):
     def __init__(self, pixmap, save_dir="", target_rect=None, parent=None):
         super().__init__(parent)
+        pixmap = self._display_pixmap_for_target(pixmap, target_rect)
         self.setWindowTitle("进阶截图")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
         self.save_dir = save_dir or os.path.join(get_base_dir(), "screenshots")
@@ -268,10 +269,12 @@ class ScreenshotEditor(QWidget):
         toolbar.addWidget(self.width_spin)
 
         self.btn_undo = QPushButton("撤销")
+        self.btn_undo.setToolTip("Ctrl+Z")
         self.btn_undo.clicked.connect(self._undo)
         toolbar.addWidget(self.btn_undo)
 
         self.btn_redo = QPushButton("重做")
+        self.btn_redo.setToolTip("Ctrl+Y")
         self.btn_redo.clicked.connect(self._redo)
         toolbar.addWidget(self.btn_redo)
 
@@ -319,6 +322,17 @@ class ScreenshotEditor(QWidget):
         self._select_tool("pen")
         self._refresh_undo_buttons()
         self._fit_to_capture(target_rect)
+
+    def _display_pixmap_for_target(self, pixmap, target_rect):
+        if not target_rect or target_rect.width() <= 0 or target_rect.height() <= 0:
+            return pixmap
+        if pixmap.width() <= target_rect.width() and pixmap.height() <= target_rect.height():
+            return pixmap
+        return pixmap.scaled(
+            target_rect.size(),
+            Qt.IgnoreAspectRatio,
+            Qt.SmoothTransformation,
+        )
 
     def _fit_to_capture(self, target_rect):
         self.adjustSize()
@@ -422,6 +436,17 @@ class ScreenshotEditor(QWidget):
         if event.button() == Qt.LeftButton:
             self._is_dragging = False
             event.accept()
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Undo):
+            self._undo()
+            event.accept()
+            return
+        if event.matches(QKeySequence.Redo):
+            self._redo()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def run_ocr(self):
         image = self.rendered_pixmap().toImage().convertToFormat(QImage.Format_ARGB32)
