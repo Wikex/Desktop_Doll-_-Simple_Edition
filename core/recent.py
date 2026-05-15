@@ -19,9 +19,10 @@ SCAN_STATE_FILE = os.path.join(get_base_dir(), "recent_scan_state.json")
 class RecentScannerThread(QThread):
     scan_finished = Signal(list, dict) # new_items, updated_mtimes
 
-    def __init__(self, excluded_extensions, last_scan_mtime, parent=None):
+    def __init__(self, excluded_extensions, excluded_paths, last_scan_mtime, parent=None):
         super().__init__(parent)
         self.excluded_extensions = excluded_extensions.copy() if excluded_extensions else {}
+        self.excluded_paths = set(excluded_paths) if excluded_paths else set()
         self.last_scan_mtime = last_scan_mtime.copy() if last_scan_mtime else {}
 
     def _normalize_ext(self, ext):
@@ -70,6 +71,13 @@ class RecentScannerThread(QThread):
                 if is_directory_target(target):
                     continue
 
+                try:
+                    norm_target = os.path.normcase(os.path.abspath(target))
+                    if norm_target in self.excluded_paths:
+                        continue
+                except Exception:
+                    pass
+
                 _, ext = os.path.splitext(target)
                 ext = self._normalize_ext(ext)
 
@@ -111,6 +119,7 @@ class RecentManager(QObject):
         self.max_items = max_items
         self.tracking_enabled = True
         self.excluded_extensions = {}
+        self.excluded_paths = set()
         
         ensure_windows_recent_tracking_enabled()
         
@@ -155,6 +164,16 @@ class RecentManager(QObject):
             self.excluded_extensions = {self._normalize_ext(k): v for k, v in exts.items() if k.strip()}
         self._purge_excluded()
 
+    def set_excluded_paths(self, paths):
+        self.excluded_paths = set()
+        for p in paths:
+            if not p: continue
+            try:
+                self.excluded_paths.add(os.path.normcase(os.path.abspath(p)))
+            except Exception:
+                pass
+        self._purge_excluded()
+
     def _normalize_ext(self, ext):
         ext = ext.strip().lower()
         if ext and not ext.startswith('.'):
@@ -165,7 +184,15 @@ class RecentManager(QObject):
         changed = False
         new_history = []
         for item in self.history:
-            if not self.excluded_extensions.get(item.get("ext"), False):
+            ext_excluded = self.excluded_extensions.get(item.get("ext"), False)
+            path_excluded = False
+            try:
+                if os.path.normcase(os.path.abspath(item.get("path", ""))) in self.excluded_paths:
+                    path_excluded = True
+            except Exception:
+                pass
+                
+            if not ext_excluded and not path_excluded:
                 new_history.append(item)
             else:
                 changed = True
@@ -323,7 +350,7 @@ class RecentManager(QObject):
             return
             
         self._rescan_requested = False
-        self._scanner = RecentScannerThread(self.excluded_extensions, self._last_scan_mtime, self)
+        self._scanner = RecentScannerThread(self.excluded_extensions, self.excluded_paths, self._last_scan_mtime, self)
         self._scanner.scan_finished.connect(lambda new_items, mtimes: self._on_scan_finished(new_items, mtimes, silent))
         self._scanner.start()
 

@@ -131,145 +131,11 @@ class FloatingAssistant:
             
         # Assign angles and radii (concentric layout)
         self._update_balls_layout()
-            
-        self.notebook_mgr = NotebookManager()
-        self.notebook_panel = NotebookPanel()
-        self.recent_mgr = RecentManager()
-        self.recent_panel = RecentPanel(skin_config=self.skin_config)
-        self.panel = Panel(skin_config=self.skin_config)
-        self.is_recording = False
-        self.recorder_thread = None
-        self.recording_border = None
-        self.screenshot_editors = []
-        self._screenshot_hidden_state = None
-        self.video_save_path = self.options.get("video_save_path", "")
-        import os
-        if self.video_save_path and not os.path.exists(self.video_save_path):
-            self.video_save_path = ""
-            
-        if not self.video_save_path:
-            self.video_save_path = os.path.join(get_base_dir(), "video")
-            self.options["video_save_path"] = self.video_save_path
-            save_option("video_save_path", self.video_save_path)
-            
-        if not os.path.exists(self.video_save_path):
-            try:
-                os.makedirs(self.video_save_path)
-            except Exception as e:
-                log_exception(f"Failed to create video directory: {e}")
-        
-        self.notebook_panel.set_main_ball(self.ball)
-        self.recent_panel.set_main_ball(self.ball)
-        self.notebook_panel.set_content(self.notebook_mgr.content)
-        
-        self.settings_dialog = None
 
-        # Connections - Main Ball
-        self.ball.clicked.connect(self.toggle_sub_balls)
-        self.ball.right_clicked.connect(self.show_ball_menu)
-        self.ball.position_changed.connect(self.on_ball_moved)
-        self.ball.edge_hidden_changed.connect(self.on_ball_edge_hidden_changed)
-        
-        # Connections - Sub Ball
-        self.clipboard_ball.clicked.connect(self.on_clipboard_ball_clicked)
-        self.clipboard_ball.position_changed.connect(self.on_clipboard_ball_moved)
-        self.record_ball.clicked.connect(self.on_record_ball_clicked)
-        self.smart_screenshot_ball.clicked.connect(self.on_smart_screenshot_clicked)
-        self.advanced_screenshot_ball.clicked.connect(self.on_advanced_screenshot_clicked)
-        self.notebook_ball.clicked.connect(self.on_notebook_ball_clicked)
-        self.notebook_ball.position_changed.connect(self.on_notebook_ball_moved)
-        self.recent_ball.clicked.connect(self.on_recent_ball_clicked)
-        self.recent_ball.position_changed.connect(self.on_recent_ball_moved)
-        self.record_ball.right_clicked.connect(self.open_video_folder)
-        self.clipboard_ball.right_clicked.connect(self.open_picture_folder)
-
-        # Connections - System
-        self.tray.quit_requested.connect(self.quit_app)
-        self.tray.restart_requested.connect(self.restart_app)
-        self.tray.about_requested.connect(self.show_about)
-        self.tray.toggle_requested.connect(self.toggle_main_ball)
-        self.tray.locate_requested.connect(self.show_ball_locator)
-        self.tray.toggle_panels_requested.connect(self.toggle_panels)
-        self.tray.settings_requested.connect(self.prompt_settings)
-        self.tray.toggle_hide_ball_when_screenshot_requested.connect(self.toggle_hide_ball_when_screenshot)
-        self.tray.change_clipboard_max_items_requested.connect(self.set_clipboard_max_items)
-        self.tray.toggle_clipboard_tracking_requested.connect(self.toggle_clipboard_tracking)
-        self.tray.change_recent_max_items_requested.connect(self.set_recent_max_items)
-        self.tray.toggle_recent_tracking_requested.connect(self.toggle_recent_tracking)
-        self.panel.toggle_text_tracking_clicked.connect(self.toggle_record_text)
-        self.panel.toggle_image_tracking_clicked.connect(self.toggle_record_image)
-        
-        # Connections - Clipboard
-        self.clipboard_mgr.history_changed.connect(self.panel.update_history)
-        self.panel.item_clicked.connect(lambda item: self.clipboard_mgr.copy_to_clipboard(item, as_plain_text=False))
-        self.panel.item_right_clicked.connect(self._on_clipboard_item_right_clicked)
-        self.panel.item_ctrl_left_clicked.connect(self._on_clipboard_item_ctrl_left_clicked)
-        self.panel.item_deleted.connect(self.clipboard_mgr.remove_item)
-        self.panel.item_pin_toggled.connect(self.clipboard_mgr.toggle_pin)
-        self.panel.history_cleared.connect(self.clipboard_mgr.clear_history)
-        self.panel.history_reordered.connect(self.clipboard_mgr.set_history)
-        self.panel.toggle_tracking_clicked.connect(self.toggle_clipboard_tracking)
-        
-        # Connections - Recent
-        self.recent_mgr.items_changed.connect(self.recent_panel.update_items)
-        self.recent_panel.item_clicked.connect(self.recent_mgr.open_item)
-        self.recent_panel.item_right_clicked.connect(self.recent_mgr.open_item_location)
-        self.recent_panel.item_deleted.connect(self.recent_mgr.remove_item)
-        self.recent_panel.item_pin_toggled.connect(self.recent_mgr.toggle_pin)
-        self.recent_panel.toggle_tracking_clicked.connect(self.toggle_recent_tracking)
-        self.recent_panel.excluded_extensions_changed.connect(self._on_recent_excluded_extensions_changed)
-        self.recent_panel.visibility_dict_changed.connect(self._on_recent_visibility_dict_changed)
-        self.recent_panel.history_cleared.connect(self.recent_mgr.clear_history)
-        self.recent_panel.history_reordered.connect(self.recent_mgr.set_history)
-        
-        self.notebook_panel.content_changed.connect(self.notebook_mgr.update_content)
-        self.hotkey_mgr.action_triggered.connect(self.on_action_triggered)
-        
-        # Initialize panel with loaded history
-        self.panel.update_history(self.clipboard_mgr.get_history())
-
-        self.recent_mgr.max_items = self.options.get("recent_max_items", 30)
-        self.recent_mgr.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
-        self.recent_mgr.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
-        self.recent_panel.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
-        self.recent_panel.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
-        self.recent_panel.set_visibility_dict(self.options.get("recent_extension_visibility", {}))
-        self.recent_panel.update_items(self.recent_mgr.get_items())
-
-        # Initial show
-        self.ball.move_to_bottom_right()
-        self.ball.show()
-        self.tray.show()
-        self.tray.set_hide_ball_when_screenshot(self.options.get("hide_ball_when_screenshot", True))
-        self.tray.set_clipboard_tracking_enabled(self.options.get("clipboard_tracking_enabled", True))
-        self.tray.set_clipboard_max_items(self.options.get("clipboard_max_items", 20))
-        self.clipboard_mgr.record_text = self.options.get('record_text', True)
-        self.clipboard_mgr.record_image = self.options.get('record_image', True)
-        self.panel.set_content_tracking_states(self.clipboard_mgr.record_text, self.clipboard_mgr.record_image)
-        self.clipboard_mgr.max_items = self.options.get("clipboard_max_items", 20)
-        self.clipboard_mgr.max_images = self.options.get("clipboard_max_images", 20)
-        
-        # Apply picture path
-        pic_path = self.options.get("picture_save_path", "")
-        import os
-        if pic_path and not os.path.exists(pic_path):
-            pic_path = ""
-            
-        if not pic_path:
-            pic_path = os.path.join(get_base_dir(), "picture")
-            self.options["picture_save_path"] = pic_path
-            save_option("picture_save_path", pic_path)
-            
-        if not os.path.exists(pic_path):
-            try:
-                os.makedirs(pic_path)
-            except Exception as e:
-                log_exception(f"Failed to create picture directory: {e}")
-                
-        self.clipboard_mgr.picture_save_path = pic_path
-        
-        self.clipboard_mgr.tracking_enabled = self.options.get("clipboard_tracking_enabled", True)
-        self.panel.set_tracking_enabled(self.options.get("clipboard_tracking_enabled", True))
+    def _update_recent_excluded_paths(self):
+        custom_apps = self.options.get("custom_apps", [])
+        paths = [app["path"] for app in custom_apps if app.get("path")]
+        self.recent_mgr.set_excluded_paths(paths)
 
     def _update_balls_layout(self):
         # Concentric circles layout algorithm
@@ -752,6 +618,7 @@ class FloatingAssistant:
         self.recent_mgr.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
         self.recent_panel.set_tracking_enabled(self.options.get("recent_tracking_enabled", True))
         self.recent_mgr.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
+        self._update_recent_excluded_paths()
         self.recent_panel.set_excluded_extensions(self.options.get("recent_excluded_extensions", []))
         self.recent_panel.set_visibility_dict(self.options.get("recent_extension_visibility", {}))
         # Apply video path
