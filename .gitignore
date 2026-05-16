@@ -3,6 +3,7 @@ __pycache__/
 .vscode/
 dist/
 build/
+Desktop_Doll_Release/
 *.spec
 !桌面人偶.spec
 history.json
@@ -10,11 +11,10 @@ recent_history.json
 recent_scan_state.json
 config.json
 notebook.json
-test_*.py
-!tools/diagnostics/test_*.py
 video/
 picture/
 *.exe
 *.log
-profile_*.py
-*_Release/
+.gitnexus/
+case/
+error_output.txt
