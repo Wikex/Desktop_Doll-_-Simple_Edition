@@ -126,7 +126,7 @@ class FloatingAssistant:
             icon = QFileIconProvider().icon(QFileInfo(app["path"]))
             ball = SubBall(self.ball, text="", radius=80, angle=0, tooltip=app["name"], bg_color=self._sub_ball_color("custom", QColor(100, 100, 100, 230)), icon=icon, skin_config=self.skin_config)
             ball.custom_app_path = app["path"]
-            ball.clicked.connect(lambda p=app["path"]: os.startfile(p) if hasattr(os, "startfile") else None)
+            ball.clicked.connect(lambda p=app["path"]: self._launch_custom_app(p))
             self.sub_balls.append(ball)
             
         # Assign angles and radii (concentric layout)
@@ -413,6 +413,16 @@ class FloatingAssistant:
 
     def on_recent_ball_moved(self, x, y):
         pass
+
+    def _launch_custom_app(self, path):
+        """Safely launch a custom application by path."""
+        try:
+            if os.path.exists(path):
+                os.startfile(path)
+            else:
+                log_message(f"Custom app path not found: {path}")
+        except Exception as e:
+            log_exception(f"Failed to launch custom app '{path}': {e}")
 
     def _open_url(self, url):
         import os

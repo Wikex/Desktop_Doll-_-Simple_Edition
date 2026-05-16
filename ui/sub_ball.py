@@ -138,9 +138,11 @@ class SubBall(QWidget):
             self.update_position_from_main()
             event.accept()
 
-    def _resolve_overlap(self, mx, my, min_dist, visited=None):
+    def _resolve_overlap(self, mx, my, min_dist, visited=None, _depth=0):
         if visited is None:
             visited = set()
+        if _depth > 12:  # safety limit — layout shouldn't need deeper recursion
+            return
         visited.add(self)
         
         for sib in self.siblings:
@@ -169,7 +171,7 @@ class SubBall(QWidget):
                 
                 sib.angle = self.angle + push_dir * angle_needed
                 sib.update_position_from_main()
-                sib._resolve_overlap(mx, my, min_dist, visited)
+                sib._resolve_overlap(mx, my, min_dist, visited, _depth + 1)
 
     def _color(self, value, fallback):
         if isinstance(value, (list, tuple)) and len(value) >= 3:

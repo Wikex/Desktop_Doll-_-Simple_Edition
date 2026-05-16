@@ -27,6 +27,12 @@ class ClipboardManager(QObject):
         # Trim history & clean orphaned disk images at startup
         self._trim_history()
         self._save_history()
+        # Periodic safety save: guards against data loss from force-quitting
+        # while the 2 s debounce timer hasn't fired yet.
+        self._periodic_save_timer = QTimer(self)
+        self._periodic_save_timer.setInterval(30_000)
+        self._periodic_save_timer.timeout.connect(self._do_save_history)
+        self._periodic_save_timer.start()
         QTimer.singleShot(3000, self._manage_image_cache)
         self._clipboard = QApplication.clipboard()
         self.tracking_enabled = True
@@ -188,7 +194,13 @@ class ClipboardManager(QObject):
                         if "Ole Private Data" in native_formats and len(native_formats) <= 6 and "Rich Text Format" not in native_formats:
                             return True
             except Exception as e:
-                log_exception(f"Failed to inspect clipboard owner: {e}")
+                # Rate-limit clipboard inspection logs: these fire extremely
+                # often under normal operation (error 87 = no owner is harmless).
+                now = time.monotonic()
+                last = getattr(self, '_last_clipboard_log_time', 0)
+                if now - last > 30:
+                    self._last_clipboard_log_time = now
+                    log_exception(f"Failed to inspect clipboard owner: {e}")
                 try:
                     import win32clipboard
                     win32clipboard.CloseClipboard()

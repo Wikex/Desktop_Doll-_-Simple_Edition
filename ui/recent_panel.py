@@ -186,7 +186,7 @@ class RecentItemWidget(QWidget):
         from PySide6.QtWidgets import QToolTip
         from PySide6.QtGui import QCursor
         
-        if ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp'] and os.path.exists(path):
+        if ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp'] and path and os.path.exists(path):
             from PySide6.QtGui import QImage, QPixmap
             from PySide6.QtCore import QBuffer, QIODevice
             image = QImage(path)

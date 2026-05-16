@@ -80,6 +80,7 @@ class HotkeyManager(QObject):
         self.app = app
         self.hotkeys = hotkeys or {}
         self.failed_hotkeys = {}
+        self._consecutive_failures = {}  # per-key failure counter (name → count)
         self._registered_ids = {} # map id -> name
         self._registered_names = {} # map name -> id
         self._next_id = 1
@@ -88,9 +89,6 @@ class HotkeyManager(QObject):
         self._last_trigger_time = time.monotonic()
         self._failed_since_last_refresh = False
 
-        self.filter = NativeHotkeyFilter(self)
-        self.app.installNativeEventFilter(self.filter)
-        
         self.filter = NativeHotkeyFilter(self)
         self.app.installNativeEventFilter(self.filter)
 
@@ -141,7 +139,10 @@ class HotkeyManager(QObject):
 
     def _on_keepalive_tick(self):
         """Periodic full re-registration.  Uses faster interval if any
-        hotkey was recently reported as failed."""
+        hotkey was recently reported as failed.  Persistently occupied keys
+        are skipped after MAX_CONSECUTIVE_FAILURES to avoid log spam."""
+        MAX_CONSECUTIVE = 5
+
         self._check_stale_pause()
 
         active_hotkeys = {
@@ -156,9 +157,26 @@ class HotkeyManager(QObject):
 
         self._failed_since_last_refresh = False
         for name, key in active_hotkeys.items():
+            # Skip keys that have failed persistently — retry once every
+            # 10 normal-mode keepalive cycles, hinting at user intervention.
+            skips = self._consecutive_failures.get(name, 0)
+            if skips >= MAX_CONSECUTIVE:
+                if self._keepalive_timer.interval() == self._KEEPALIVE_NORMAL:
+                    self._consecutive_failures[name] = MAX_CONSECUTIVE + 1  # allow one retry
+                else:
+                    continue
+            elif skips > MAX_CONSECUTIVE:
+                if self._keepalive_timer.interval() == self._KEEPALIVE_NORMAL:
+                    self._consecutive_failures[name] = 0  # reset for retry
+                else:
+                    continue
+
             ok = self._register_native_hotkey(name, key)
             if not ok:
                 self._failed_since_last_refresh = True
+                self._consecutive_failures[name] = skips + 1
+            else:
+                self._consecutive_failures.pop(name, None)
 
         # Switch back to normal interval if everything succeeded
         self._keepalive_timer.setInterval(
@@ -241,13 +259,15 @@ class HotkeyManager(QObject):
         return False
 
     def _unregister_native_hotkey(self, name):
-        hk_id = self._registered_names.pop(name, None)
+        hk_id = self._registered_names.get(name)
         if hk_id is not None:
             try:
                 self.user32.UnregisterHotKey(None, hk_id)
             except Exception as e:
                 log_message(f"Failed to unregister hotkey id {hk_id} for {name}: {e}")
+                return  # keep the mapping intact so it can be retried
             self._registered_ids.pop(hk_id, None)
+            self._registered_names.pop(name, None)
 
     def unregister_hotkey(self, name):
         self._unregister_native_hotkey(name)

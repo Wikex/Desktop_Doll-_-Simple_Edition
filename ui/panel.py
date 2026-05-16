@@ -57,6 +57,16 @@ class PinnedImageDialog(QWidget):
         
         painter.drawPixmap(0, 0, scaled_width, scaled_height, self.original_pixmap)
 
+    def closeEvent(self, event):
+        """Remove self from parent's _pinned_images list on close."""
+        parent = self.parent()
+        if parent and hasattr(parent, '_pinned_images'):
+            try:
+                parent._pinned_images.remove(self)
+            except ValueError:
+                pass
+        super().closeEvent(event)
+
     def wheelEvent(self, event):
         angle = event.angleDelta().y()
         
@@ -699,7 +709,7 @@ class Panel(QWidget):
             # Clean up closed ones
             self._pinned_images = [p for p in self._pinned_images if p.isVisible()]
             
-            pinned = PinnedImageDialog(pixmap, item_data)
+            pinned = PinnedImageDialog(pixmap, item_data, parent=self)
             
             # Center it on screen
             from PySide6.QtGui import QGuiApplication
@@ -710,6 +720,11 @@ class Panel(QWidget):
             
             self._pinned_images.append(pinned)
         else:
+            # Close any previously-opened details dialog to prevent leaks
+            old_dialog = getattr(self, '_details_dialog', None)
+            if old_dialog:
+                old_dialog.close()
+                old_dialog.deleteLater()
             self._details_dialog = DetailsDialog(item_data, self)
             self._details_dialog.show()
 

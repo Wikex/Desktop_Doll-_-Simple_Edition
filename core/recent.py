@@ -59,6 +59,12 @@ class RecentScannerThread(QThread):
                 if updated_mtimes.get(lnk) == mtime:
                     continue
 
+                # Skip .lnk shortcuts that point to disconnected network shares
+                # (UNC paths starting with \\ can hang resolve_lnk_target for 30+ s)
+                lnk_lower = lnk.lower()
+                if lnk_lower.startswith('\\\\') or '\\network\\' in lnk_lower:
+                    continue
+
                 target = resolve_lnk_target(lnk, shell=shell)
                 if not target:
                     continue
@@ -124,9 +130,10 @@ class RecentManager(QObject):
         ensure_windows_recent_tracking_enabled()
         
         self.history = self._load_history()
-        self._last_scan_mtime = self._load_scan_state() # lnk path -> mtime
+        self._last_scan_mtime = self._load_scan_state()
         self._rescan_requested = False
         self._drop_current_scan_results = False
+        self._scan_in_progress = False  # guards against overlapping scans
 
         self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.tick_scan)
@@ -361,16 +368,18 @@ class RecentManager(QObject):
         if not self.tracking_enabled and not silent:
             return
             
-        if hasattr(self, '_scanner') and self._scanner.isRunning():
+        if self._scan_in_progress:
             self._rescan_requested = True
             return
             
+        self._scan_in_progress = True
         self._rescan_requested = False
         self._scanner = RecentScannerThread(self.excluded_extensions, self.excluded_paths, self._last_scan_mtime, self)
         self._scanner.scan_finished.connect(lambda new_items, mtimes: self._on_scan_finished(new_items, mtimes, silent))
         self._scanner.start()
 
     def _on_scan_finished(self, new_items, updated_mtimes, silent):
+        self._scan_in_progress = False
         self._last_scan_mtime.update(updated_mtimes)
         self._save_scan_state()
 
