@@ -19,6 +19,10 @@ class ClipboardManager(QObject):
         super().__init__(parent)
         self.max_items = max_items
         self.history = self._load_history()
+        # Trim history & clean orphaned disk images at startup
+        self._trim_history()
+        self._save_history()
+        QTimer.singleShot(3000, self._manage_image_cache)
         self._clipboard = QApplication.clipboard()
         self.tracking_enabled = True
         self.record_text = True

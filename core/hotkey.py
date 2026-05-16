@@ -71,6 +71,10 @@ class NativeHotkeyFilter(QAbstractNativeEventFilter):
 class HotkeyManager(QObject):
     action_triggered = Signal(str, object, object)
 
+    # Adaptive keepalive: shorter interval when failures are detected
+    _KEEPALIVE_NORMAL = 5 * 60 * 1000     # 5 min (normal)
+    _KEEPALIVE_FAST   = 45 * 1000          # 45 s  (failure-retry mode)
+
     def __init__(self, app, hotkeys=None, parent=None):
         super().__init__(parent)
         self.app = app
@@ -81,23 +85,35 @@ class HotkeyManager(QObject):
         self._next_id = 1
         self.paused = False
         self._paused_since = None
-        
+        self._last_trigger_time = time.monotonic()
+        self._failed_since_last_refresh = False
+
         self.filter = NativeHotkeyFilter(self)
         self.app.installNativeEventFilter(self.filter)
         
+        self.filter = NativeHotkeyFilter(self)
+        self.app.installNativeEventFilter(self.filter)
+
         self.user32 = ctypes.windll.user32
         self.user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
         self.user32.RegisterHotKey.restype = wintypes.BOOL
         self.user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
         self.user32.UnregisterHotKey.restype = wintypes.BOOL
-        
+
         for name, key in list(self.hotkeys.items()):
             self._register_native_hotkey(name, key)
 
         self._keepalive_timer = QTimer(self)
-        self._keepalive_timer.setInterval(5 * 60 * 1000)
-        self._keepalive_timer.timeout.connect(self.refresh_hotkeys)
+        self._keepalive_timer.setInterval(self._KEEPALIVE_NORMAL)
+        self._keepalive_timer.timeout.connect(self._on_keepalive_tick)
         self._keepalive_timer.start()
+
+        # Faster watchdog: if no hotkey fires for 4 minutes despite registrations,
+        # suspect Windows deregistered them and refresh early.
+        self._watchdog_timer = QTimer(self)
+        self._watchdog_timer.setInterval(60_000)   # check every 60 s
+        self._watchdog_timer.timeout.connect(self._check_silent_drop)
+        self._watchdog_timer.start()
 
         try:
             self.app.aboutToQuit.connect(self.cleanup)
@@ -105,6 +121,7 @@ class HotkeyManager(QObject):
             pass
 
     def _trigger_action(self, name):
+        self._last_trigger_time = time.monotonic()
         if self.paused:
             return
         self.action_triggered.emit(name, None, None)
@@ -119,6 +136,55 @@ class HotkeyManager(QObject):
         if time.monotonic() - self._paused_since > 120:
             self.set_paused(False)
             log_message("Hotkey pause timed out and was automatically cleared")
+
+    # ── Adaptive keepalive ──────────────────────────────────────────
+
+    def _on_keepalive_tick(self):
+        """Periodic full re-registration.  Uses faster interval if any
+        hotkey was recently reported as failed."""
+        self._check_stale_pause()
+
+        active_hotkeys = {
+            name: key for name, key in self.hotkeys.items() if key
+        }
+        if not active_hotkeys:
+            return
+
+        # Full re-registration
+        for name in list(self._registered_names.keys()):
+            self._unregister_native_hotkey(name)
+
+        self._failed_since_last_refresh = False
+        for name, key in active_hotkeys.items():
+            ok = self._register_native_hotkey(name, key)
+            if not ok:
+                self._failed_since_last_refresh = True
+
+        # Switch back to normal interval if everything succeeded
+        self._keepalive_timer.setInterval(
+            self._KEEPALIVE_FAST if self._failed_since_last_refresh
+            else self._KEEPALIVE_NORMAL
+        )
+
+    def _check_silent_drop(self):
+        """If hotkeys are registered but none have fired for >4 min,
+        Windows may have silently deregistered them (rare).  Force a
+        keepalive refresh early."""
+        if not self._registered_ids:
+            return
+        idle = time.monotonic() - self._last_trigger_time
+        if idle > 240 and not self._keepalive_timer.isActive():
+            # keepalive timer is somehow stopped — restart it
+            self._keepalive_timer.start()
+        elif idle > 240:
+            # Force an early refresh now instead of waiting for the
+            # next keepalive tick.
+            log_message(
+                f"Hotkey watchdog: no event for {idle:.0f}s — forcing refresh"
+            )
+            self._on_keepalive_tick()
+
+    # ── /Adaptive keepalive ─────────────────────────────────────────
 
     def _register_native_hotkey(self, name, key):
         if not key:
@@ -189,25 +255,14 @@ class HotkeyManager(QObject):
         return True
 
     def refresh_hotkeys(self):
-        self._check_stale_pause()
-
-        active_hotkeys = {
-            name: key
-            for name, key in self.hotkeys.items()
-            if key
-        }
-        if not active_hotkeys:
-            return
-
-        for name in list(self._registered_names.keys()):
-            self._unregister_native_hotkey(name)
-
-        for name, key in active_hotkeys.items():
-            self._register_native_hotkey(name, key)
+        """Public API — forces a full re-registration immediately."""
+        self._on_keepalive_tick()
 
     def cleanup(self):
         if hasattr(self, "_keepalive_timer"):
             self._keepalive_timer.stop()
+        if hasattr(self, "_watchdog_timer"):
+            self._watchdog_timer.stop()
 
         for name in list(self._registered_names.keys()):
             self._unregister_native_hotkey(name)

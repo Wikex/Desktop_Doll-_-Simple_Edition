@@ -1,13 +1,51 @@
-from PySide6.QtCore import QBuffer, QIODevice, Qt
+import time
+import gc
+from PySide6.QtCore import QBuffer, QIODevice, Qt, QTimer
 
 class OcrUnavailableError(RuntimeError):
     pass
 
-# Singleton engine to prevent reloading models on every screenshot
+# Singleton engine — lazy-loaded, auto-unloaded after 5 min idle
 _engine = None
+_last_used_time = 0.0
+_IDLE_TIMEOUT = 300  # 5 seconds → 300 in production; unload after this idle period
+_unloader_timer = None
+
+
+def _start_unloader():
+    """Start a background timer that checks idle time once per minute."""
+    global _unloader_timer
+    if _unloader_timer is not None:
+        return
+    _unloader_timer = QTimer()
+    _unloader_timer.setInterval(60_000)  # check every 60 s
+    _unloader_timer.timeout.connect(_check_idle)
+    _unloader_timer.start()
+
+
+def _check_idle():
+    """If the engine has been idle for longer than _IDLE_TIMEOUT, free it."""
+    global _engine
+    if _engine is None:
+        return
+    if time.time() - _last_used_time > _IDLE_TIMEOUT:
+        _engine = None
+        gc.collect()
+
+
+def unload_engine():
+    """Force-unload the OCR engine immediately (e.g. on app suspend)."""
+    global _engine
+    if _engine is not None:
+        _engine = None
+        gc.collect()
+
 
 def get_engine():
-    global _engine
+    global _engine, _last_used_time
+    _last_used_time = time.time()
+    _start_unloader()
+
     if _engine is None:
         try:
             from rapidocr_onnxruntime import RapidOCR
@@ -93,6 +131,9 @@ def recognize_qimage(qimage, languages="chi_sim+eng", scale_factor=None):
     Returns a list of dicts: {"box": [[x, y], ...], "text": str, "score": float}.
     Coordinates are always mapped back to the original qimage size.
     """
+    global _last_used_time
+    _last_used_time = time.time()
+
     engine = get_engine()
     scale = float(scale_factor) if scale_factor else _ocr_scale_factor(qimage)
     data = _encode_png(qimage, scale)

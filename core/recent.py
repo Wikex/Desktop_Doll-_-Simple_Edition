@@ -148,6 +148,22 @@ class RecentManager(QObject):
 
         QTimer.singleShot(800, self.tick_scan)
 
+    # ── Dynamic polling ─────────────────────────────────────────────
+    _POLL_FAST_MS = 1000   # interval when recent panel is visible
+    _POLL_SLOW_MS = 10_000 # interval when panel is hidden
+
+    def set_panel_visible(self, visible: bool):
+        """Called by app_controller when the recent panel is shown/hidden.
+        The 1 s poll is only needed while the user can see results; when
+        hidden we back off to 10 s to reduce thread wakeups."""
+        self.poll_timer.setInterval(
+            self._POLL_FAST_MS if visible else self._POLL_SLOW_MS
+        )
+        if visible and self.tracking_enabled:
+            # Kick an immediate scan so the panel doesn't sit empty
+            self.tick_scan(silent=True)
+    # ── /Dynamic polling ────────────────────────────────────────────
+
     def set_tracking_enabled(self, enabled):
         was_enabled = self.tracking_enabled
         self.tracking_enabled = enabled
