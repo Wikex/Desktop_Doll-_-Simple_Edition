@@ -1,8 +1,9 @@
 from PySide6.QtWidgets import QWidget, QApplication, QDialog
 from PySide6.QtCore import Qt, QRect, QPoint, Signal, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QGuiApplication, QPixmap
-from core.screenshot import get_all_visible_rects, get_uia_rects_at, get_virtual_screen_rect, rect_area
+from core.screenshot import get_all_visible_rects, get_uia_rects_at, get_virtual_screen_rect, rect_area, _rect_from_uia_control
 from PIL import ImageGrab
+import uiautomation as auto
 import io
 import win32api
 import win32con
@@ -43,6 +44,7 @@ class ScreenshotMask(QDialog):
         self.uia_timer.setSingleShot(True)
         self.uia_timer.setInterval(100)
         self.uia_timer.timeout.connect(self._do_uia_search)
+        self._last_quick_uia_pos = None
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -208,15 +210,42 @@ class ScreenshotMask(QDialog):
             if labels_count <= 1:
                 return None
 
-            label = labels[seed_y, seed_x]
-            if label == 0:
-                return None
+            def _valid_component(comp_label):
+                if comp_label == 0:
+                    return False
+                cx, cy, cw, ch, ca = stats[comp_label]
+                if ca < 80 or cw < 8 or ch < 8:
+                    return False
+                if cx <= 1 and cy <= 1 and cx + cw >= small_w - 1 and cy + ch >= small_h - 1:
+                    return False
+                return True
 
-            x, y, w, h, area = stats[label]
-            if area < 80 or w < 8 or h < 8:
-                return None
-            if x <= 1 and y <= 1 and x + w >= small_w - 1 and y + h >= small_h - 1:
-                return None
+            label = labels[seed_y, seed_x]
+            x = y = w = h = area = None
+            if _valid_component(label):
+                x, y, w, h, area = stats[label]
+            else:
+                # 光标落在边缘/分界线上，向四周搜索最近的有效色块
+                offsets = []
+                for step in (2, 4, 6):
+                    for dy in (-step, 0, step):
+                        for dx in (-step, 0, step):
+                            if dy == 0 and dx == 0:
+                                continue
+                            offsets.append((dy, dx))
+                offsets.sort(key=lambda o: abs(o[0]) + abs(o[1]))
+                found = False
+                for dy, dx in offsets:
+                    ny, nx = seed_y + dy, seed_x + dx
+                    if not (0 <= ny < small_h and 0 <= nx < small_w):
+                        continue
+                    nl = labels[ny, nx]
+                    if _valid_component(nl):
+                        x, y, w, h, area = stats[nl]
+                        found = True
+                        break
+                if not found:
+                    return None
 
             pad = 2
             phys_left = self.virtual_screen_left + left + max(0, (x - pad) * scale)
@@ -332,6 +361,22 @@ class ScreenshotMask(QDialog):
             if self._is_candidate_rect(rect, physical_pos):
                 ew_candidates.append(rect)
                 self._add_candidate(candidates, seen, "ew", rect, physical_pos)
+
+        # 鼠标移动时即时轻量 UIA：缓存失效时用单次 ControlFromPoint 抓最基本控件，
+        # 无需等 100ms 防抖定时器触发完整 UIA 树遍历，且光标需移动 >5px 才重查
+        if not include_uia and not any(c[0] == "uia" for c in candidates):
+            last_uia_pos = getattr(self, '_last_quick_uia_pos', None)
+            if last_uia_pos is None or (physical_pos - last_uia_pos).manhattanLength() > 4:
+                self._last_quick_uia_pos = physical_pos
+                try:
+                    control = auto.ControlFromPoint(physical_pos.x(), physical_pos.y())
+                    if control:
+                        quick_rect = _rect_from_uia_control(control)
+                        if quick_rect and self._is_candidate_rect(quick_rect, physical_pos):
+                            self._add_candidate(candidates, seen, "uia", quick_rect, physical_pos)
+                            self.last_uia_rect = quick_rect
+                except Exception:
+                    pass
 
         standard_best = self._choose_best_rect(candidates)
         visual_rect = self._visual_rect_at(physical_pos)
