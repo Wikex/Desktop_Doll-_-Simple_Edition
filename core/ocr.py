@@ -11,7 +11,12 @@ def get_engine():
     if _engine is None:
         try:
             from rapidocr_onnxruntime import RapidOCR
-            _engine = RapidOCR()
+            # Lower text_score (0.5→0.3) so standalone digits (which get lower
+            # confidence from the recognition model) are not silently dropped.
+            # Also lower det box_thresh (0.5→0.4) to accept slightly weaker
+            # detection boxes, helping small / isolated characters get through.
+            _engine = RapidOCR(text_score=0.3)
+            _engine.text_detector.postprocess_op.box_thresh = 0.4
         except Exception as exc:
             raise OcrUnavailableError("OCR 组件加载失败，请确保安装了 rapidocr-onnxruntime。") from exc
     return _engine
